@@ -1,0 +1,302 @@
+[
+  {
+    "symbol": "ADANIENT",
+    "name": "Adani Enterprises",
+    "isin": "INE423A01024",
+    "trading_symbol": "ADANIENT"
+  },
+  {
+    "symbol": "ADANIPORTS",
+    "name": "Adani Ports",
+    "isin": "INE742F01042",
+    "trading_symbol": "ADANIPORTS"
+  },
+  {
+    "symbol": "APOLLOHOSP",
+    "name": "Apollo Hospitals",
+    "isin": "INE437A01024",
+    "trading_symbol": "APOLLOHOSP"
+  },
+  {
+    "symbol": "ASIANPAINT",
+    "name": "Asian Paints",
+    "isin": "INE021A01026",
+    "trading_symbol": "ASIANPAINT"
+  },
+  {
+    "symbol": "AXISBANK",
+    "name": "Axis Bank",
+    "isin": "INE238A01034",
+    "trading_symbol": "AXISBANK"
+  },
+  {
+    "symbol": "BAJAJ-AUTO",
+    "name": "Bajaj Auto",
+    "isin": "INE917I01010",
+    "trading_symbol": "BAJAJ-AUTO"
+  },
+  {
+    "symbol": "BAJFINANCE",
+    "name": "Bajaj Finance",
+    "isin": "INE296A01032",
+    "trading_symbol": "BAJFINANCE"
+  },
+  {
+    "symbol": "BAJAJFINSV",
+    "name": "Bajaj Finserv",
+    "isin": "INE918I01026",
+    "trading_symbol": "BAJAJFINSV"
+  },
+  {
+    "symbol": "BEL",
+    "name": "Bharat Electronics",
+    "isin": "INE263A01024",
+    "trading_symbol": "BEL"
+  },
+  {
+    "symbol": "BHARTIARTL",
+    "name": "Bharti Airtel",
+    "isin": "INE397D01024",
+    "trading_symbol": "BHARTIARTL"
+  },
+  {
+    "symbol": "BPCL",
+    "name": "BPCL",
+    "isin": "INE029A01011",
+    "trading_symbol": "BPCL"
+  },
+  {
+    "symbol": "BRITANNIA",
+    "name": "Britannia",
+    "isin": "INE216A01030",
+    "trading_symbol": "BRITANNIA"
+  },
+  {
+    "symbol": "CIPLA",
+    "name": "Cipla",
+    "isin": "INE059A01026",
+    "trading_symbol": "CIPLA"
+  },
+  {
+    "symbol": "COALINDIA",
+    "name": "Coal India",
+    "isin": "INE522F01014",
+    "trading_symbol": "COALINDIA"
+  },
+  {
+    "symbol": "DRREDDY",
+    "name": "Dr Reddy's",
+    "isin": "INE089A01031",
+    "trading_symbol": "DRREDDY"
+  },
+  {
+    "symbol": "EICHERMOT",
+    "name": "Eicher Motors",
+    "isin": "INE066A01021",
+    "trading_symbol": "EICHERMOT"
+  },
+  {
+    "symbol": "GRASIM",
+    "name": "Grasim",
+    "isin": "INE047A01021",
+    "trading_symbol": "GRASIM"
+  },
+  {
+    "symbol": "HCLTECH",
+    "name": "HCL Tech",
+    "isin": "INE860A01027",
+    "trading_symbol": "HCLTECH"
+  },
+  {
+    "symbol": "HDFCBANK",
+    "name": "HDFC Bank",
+    "isin": "INE040A01034",
+    "trading_symbol": "HDFCBANK"
+  },
+  {
+    "symbol": "HDFCLIFE",
+    "name": "HDFC Life",
+    "isin": "INE795G01014",
+    "trading_symbol": "HDFCLIFE"
+  },
+  {
+    "symbol": "HEROMOTOCO",
+    "name": "Hero MotoCorp",
+    "isin": "INE158A01026",
+    "trading_symbol": "HEROMOTOCO"
+  },
+  {
+    "symbol": "HINDALCO",
+    "name": "Hindalco",
+    "isin": "INE038A01020",
+    "trading_symbol": "HINDALCO"
+  },
+  {
+    "symbol": "HINDUNILVR",
+    "name": "Hindustan Unilever",
+    "isin": "INE030A01027",
+    "trading_symbol": "HINDUNILVR"
+  },
+  {
+    "symbol": "ICICIBANK",
+    "name": "ICICI Bank",
+    "isin": "INE090A01021",
+    "trading_symbol": "ICICIBANK"
+  },
+  {
+    "symbol": "INDUSINDBK",
+    "name": "IndusInd Bank",
+    "isin": "INE095A01012",
+    "trading_symbol": "INDUSINDBK"
+  },
+  {
+    "symbol": "INFY",
+    "name": "Infosys",
+    "isin": "INE009A01021",
+    "trading_symbol": "INFY"
+  },
+  {
+    "symbol": "ITC",
+    "name": "ITC",
+    "isin": "INE154A01025",
+    "trading_symbol": "ITC"
+  },
+  {
+    "symbol": "JIOFIN",
+    "name": "Jio Financial",
+    "isin": "INE758E01017",
+    "trading_symbol": "JIOFIN"
+  },
+  {
+    "symbol": "JSWSTEEL",
+    "name": "JSW Steel",
+    "isin": "INE019A01038",
+    "trading_symbol": "JSWSTEEL"
+  },
+  {
+    "symbol": "KOTAKBANK",
+    "name": "Kotak Mahindra Bank",
+    "isin": "INE237A01036",
+    "trading_symbol": "KOTAKBANK"
+  },
+  {
+    "symbol": "LT",
+    "name": "Larsen & Toubro",
+    "isin": "INE018A01030",
+    "trading_symbol": "LT"
+  },
+  {
+    "symbol": "M&M",
+    "name": "Mahindra & Mahindra",
+    "isin": "INE101A01026",
+    "trading_symbol": "M&M"
+  },
+  {
+    "symbol": "MARUTI",
+    "name": "Maruti Suzuki",
+    "isin": "INE585B01010",
+    "trading_symbol": "MARUTI"
+  },
+  {
+    "symbol": "NESTLEIND",
+    "name": "Nestle India",
+    "isin": "INE239A01024",
+    "trading_symbol": "NESTLEIND"
+  },
+  {
+    "symbol": "NTPC",
+    "name": "NTPC",
+    "isin": "INE733E01010",
+    "trading_symbol": "NTPC"
+  },
+  {
+    "symbol": "ONGC",
+    "name": "ONGC",
+    "isin": "INE213A01029",
+    "trading_symbol": "ONGC"
+  },
+  {
+    "symbol": "POWERGRID",
+    "name": "Power Grid",
+    "isin": "INE752E01010",
+    "trading_symbol": "POWERGRID"
+  },
+  {
+    "symbol": "RELIANCE",
+    "name": "Reliance Industries",
+    "isin": "INE002A01018",
+    "trading_symbol": "RELIANCE"
+  },
+  {
+    "symbol": "SBILIFE",
+    "name": "SBI Life",
+    "isin": "INE123W01016",
+    "trading_symbol": "SBILIFE"
+  },
+  {
+    "symbol": "SBIN",
+    "name": "State Bank of India",
+    "isin": "INE062A01020",
+    "trading_symbol": "SBIN"
+  },
+  {
+    "symbol": "SUNPHARMA",
+    "name": "Sun Pharma",
+    "isin": "INE044A01036",
+    "trading_symbol": "SUNPHARMA"
+  },
+  {
+    "symbol": "TCS",
+    "name": "TCS",
+    "isin": "INE467B01029",
+    "trading_symbol": "TCS"
+  },
+  {
+    "symbol": "TATACONSUM",
+    "name": "Tata Consumer",
+    "isin": "INE192A01025",
+    "trading_symbol": "TATACONSUM"
+  },
+  {
+    "symbol": "TATAMOTORS",
+    "name": "Tata Motors",
+    "isin": "INE155A01022",
+    "trading_symbol": "TATAMOTORS"
+  },
+  {
+    "symbol": "TATASTEEL",
+    "name": "Tata Steel",
+    "isin": "INE081A01020",
+    "trading_symbol": "TATASTEEL"
+  },
+  {
+    "symbol": "TECHM",
+    "name": "Tech Mahindra",
+    "isin": "INE669C01036",
+    "trading_symbol": "TECHM"
+  },
+  {
+    "symbol": "TITAN",
+    "name": "Titan",
+    "isin": "INE280A01028",
+    "trading_symbol": "TITAN"
+  },
+  {
+    "symbol": "TRENT",
+    "name": "Trent",
+    "isin": "INE849A01020",
+    "trading_symbol": "TRENT"
+  },
+  {
+    "symbol": "ULTRACEMCO",
+    "name": "UltraTech Cement",
+    "isin": "INE481G01011",
+    "trading_symbol": "ULTRACEMCO"
+  },
+  {
+    "symbol": "WIPRO",
+    "name": "Wipro",
+    "isin": "INE075A01022",
+    "trading_symbol": "WIPRO"
+  }
+]
