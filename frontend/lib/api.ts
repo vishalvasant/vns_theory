@@ -20,12 +20,28 @@ export type Instrument = {
   id: number;
   symbol: string;
   name: string;
+  exchange?: string;
+  segment?: string;
+  trading_symbol?: string;
   instrument_key: string;
   tick_size: number;
   tolerance_abs: number;
   tolerance_pct: number;
   is_nifty50: boolean;
   last_synced_at: string | null;
+};
+
+export type InstrumentSearchHit = {
+  exchange: string;
+  segment: string;
+  symbol: string;
+  trading_symbol: string;
+  name: string;
+  isin: string;
+  instrument_key: string;
+  tick_size: number;
+  instrument_type: string;
+  in_library: boolean;
 };
 
 export type Candle = {
@@ -109,19 +125,61 @@ export async function me() {
   return request<User>("/api/v1/auth/me");
 }
 
-export async function listInstruments() {
-  return request<Instrument[]>("/api/v1/instruments");
+export async function listInstruments(scope?: "watchlist" | "nifty50" | "all") {
+  const qs = scope ? `?scope=${scope}` : "";
+  return request<Instrument[]>(`/api/v1/instruments${qs}`);
+}
+
+export async function searchInstruments(query: string, exchange?: "NSE" | "BSE") {
+  const params = new URLSearchParams({ q: query, limit: "25" });
+  if (exchange) params.set("exchange", exchange);
+  return request<InstrumentSearchHit[]>(`/api/v1/instruments/search?${params}`);
+}
+
+export async function openInstrument(instrumentKey: string, sync = true, allTimeframes = true) {
+  return request<{
+    instrument: Instrument;
+    added_to_watchlist: boolean;
+    sync: {
+      synced: number;
+      analyzed: number;
+      candle_rows: number;
+      errors: string[];
+      timeframes: string[];
+    } | null;
+  }>("/api/v1/instruments/open", {
+    method: "POST",
+    body: JSON.stringify({
+      instrument_key: instrumentKey,
+      sync,
+      all_timeframes: allTimeframes,
+    }),
+  });
+}
+
+export async function removeFromWatchlist(symbol: string) {
+  return request<{ removed: boolean; symbol: string }>(
+    `/api/v1/watchlist/${encodeURIComponent(symbol)}`,
+    { method: "DELETE" }
+  );
 }
 
 export async function getCandles(symbol: string, timeframe = "day") {
-  const limit = timeframe === "1minute" ? 5000 : timeframe === "30minute" ? 2500 : 1500;
+  const limit =
+    timeframe === "15minute" || timeframe === "30minute"
+      ? 2500
+      : timeframe === "1hour" || timeframe === "4hour"
+        ? 2000
+        : 1500;
   return request<Candle[]>(
-    `/api/v1/instruments/${symbol}/candles?timeframe=${timeframe}&limit=${limit}`
+    `/api/v1/instruments/${encodeURIComponent(symbol)}/candles?timeframe=${timeframe}&limit=${limit}`
   );
 }
 
 export async function getAnalysis(symbol: string, timeframe = "day") {
-  return request<Analysis>(`/api/v1/instruments/${symbol}/analysis?timeframe=${timeframe}`);
+  return request<Analysis>(
+    `/api/v1/instruments/${encodeURIComponent(symbol)}/analysis?timeframe=${timeframe}`
+  );
 }
 
 export async function listAnalyses(timeframe = "day") {

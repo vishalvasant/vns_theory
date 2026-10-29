@@ -28,8 +28,12 @@ class PackageTier(str, Enum):
 
 
 class Timeframe(str, Enum):
+    # Kept for existing DB rows; not synced or shown in UI
     MINUTE_1 = "1minute"
+    MINUTE_15 = "15minute"
     MINUTE_30 = "30minute"
+    HOUR_1 = "1hour"
+    HOUR_4 = "4hour"
     DAY = "day"
     WEEK = "week"
     MONTH = "month"

@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VNS Analytics — Interactive Design Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --ink: #152028;
+      --muted: #5f6b76;
+      --line: #d8dee5;
+      --green: #0b5c4a;
+      --green-soft: #e6f3ef;
+      --red: #a12828;
+      --red-soft: #f8eaea;
+      --amber: #8a5a12;
+      --amber-soft: #f7efdf;
+      --slate: #eef2f5;
+      --font: "DM Sans", system-ui, sans-serif;
+      --display: "Instrument Serif", Georgia, serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    .banner {
+      background: #152028;
+      color: #dce5ee;
+      padding: 0.65rem 1.25rem;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .banner strong { color: #fff; }
+    .role-switch {
+      display: flex;
+      gap: 0.35rem;
+      background: #24303a;
+      padding: 0.25rem;
+      border-radius: 999px;
+    }
+    .role-switch button {
+      border: 0;
+      background: transparent;
+      color: #9aabba;
+      padding: 0.4rem 0.9rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .role-switch button.active {
+      background: var(--green);
+      color: #fff;
+    }
+    .view { display: none; min-height: calc(100vh - 44px); }
+    .view.active { display: block; }
+
+    /* ===== USER ===== */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .brand {
+      font-family: var(--display);
+      font-size: 1.7rem;
+      letter-spacing: -0.02em;
+    }
+    .brand span { color: var(--green); }
+    .nav { display: flex; gap: 1.25rem; color: var(--muted); font-size: 0.92rem; font-weight: 500; }
+    .nav a { color: inherit; text-decoration: none; }
+    .nav a.on { color: var(--ink); }
+    .chip {
+      background: var(--green-soft);
+      color: var(--green);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .user-shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 2.5rem;
+    }
+    .page-head h1 {
+      font-family: var(--display);
+      font-size: 2.2rem;
+      margin: 0 0 0.25rem;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+    }
+    .page-head p { margin: 0; color: var(--muted); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin: 1.25rem 0 1rem;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+    .stat .n {
+      font-family: var(--display);
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+    .stat .l { color: var(--muted); font-size: 0.8rem; margin-top: 0.35rem; }
+    .stat.teji .n { color: var(--green); }
+    .stat.mandi .n { color: var(--red); }
+    .stat.setup .n { color: var(--amber); }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 1rem;
+    }
+    .filters button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 0.4rem 0.85rem;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .filters button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 1.05fr 1.2fr;
+      gap: 1rem;
+      min-height: 560px;
+    }
+    @media (max-width: 960px) {
+      .workspace, .stats { grid-template-columns: 1fr; }
+    }
+
+    .board, .detail {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-h {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .panel-h h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+    .panel-h small { color: var(--muted); }
+
+    .rows { overflow: auto; flex: 1; }
+    .row {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      font: inherit;
+      display: grid;
+      grid-template-columns: 88px 1fr auto;
+      gap: 0.6rem;
+      align-items: start;
+    }
+    .row:hover { background: var(--slate); }
+    .row.selected { background: var(--green-soft); }
+    .row .sym { font-weight: 700; }
+    .row .sig { font-size: 0.86rem; font-weight: 600; }
+    .row .note { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+    .tag {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.45rem;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .tag.teji { background: var(--green-soft); color: var(--green); }
+    .tag.mandi { background: var(--red-soft); color: var(--red); }
+    .tag.setup { background: var(--amber-soft); color: var(--amber); }
+
+    .detail-body { padding: 1rem; display: flex; flex-direction: column; gap: 0.85rem; flex: 1; }
+    .detail-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .detail-title h3 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 1.7rem;
+      font-weight: 400;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .badge {
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: var(--slate);
+    }
+    .badge.ok { background: var(--green-soft); color: var(--green); }
+    .badge.danger { background: var(--red-soft); color: var(--red); }
+    .badge.accent { background: #e8eef5; color: #245; }
+
+    #chart {
+      height: 300px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fafcfd;
+    }
+    .levels {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+    }
+    .level {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.55rem 0.65rem;
+      background: var(--slate);
+    }
+    .level .k { font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+    .level .v { font-weight: 700; margin-top: 0.15rem; }
+    .readbox {
+      border-left: 3px solid var(--green);
+      padding: 0.55rem 0.75rem;
+      background: var(--green-soft);
+      border-radius: 0 10px 10px 0;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    /* ===== ADMIN ===== */
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      min-height: calc(100vh - 44px);
+    }
+    .sidebar {
+      background: #152028;
+      color: #c5d0da;
+      padding: 1.25rem 0.9rem;
+    }
+    .sidebar .brand { color: #fff; font-size: 1.4rem; margin: 0 0.4rem 1.25rem; }
+    .side-link {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 0.2rem;
+    }
+    .side-link.active, .side-link:hover {
+      background: #24303a;
+      color: #fff;
+    }
+    .admin-main { padding: 1.25rem 1.5rem 2rem; }
+    .admin-main h1 {
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 2rem;
+      margin: 0 0 0.25rem;
+    }
+    .admin-main .sub { color: var(--muted); margin: 0 0 1.25rem; }
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 960px) {
+      .admin-layout { grid-template-columns: 1fr; }
+      .kpi { grid-template-columns: 1fr 1fr; }
+    }
+    table.users {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table.users th, table.users td {
+      text-align: left;
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    table.users th {
+      background: var(--slate);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .ghost {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 0.35rem 0.65rem;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .primary {
+      border: 0;
+      background: var(--green);
+      color: #fff;
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .admin-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 960px) {
+      .admin-grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    .card h3 { margin: 0 0 0.75rem; font-size: 0.95rem; }
+    .hint {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <div><strong>Design preview only</strong> — click around. Not connected to the real app yet.</div>
+    <div class="role-switch">
+      <button id="btn-user" class="active" type="button">User dashboard</button>
+      <button id="btn-admin" type="button">Admin dashboard</button>
+    </div>
+  </div>
+
+  <!-- USER VIEW -->
+  <div id="view-user" class="view active">
+    <header class="topbar">
+      <div class="brand">VNS <span>Analytics</span></div>
+      <nav class="nav">
+        <a class="on" href="#">Today</a>
+        <a href="#">Scripts</a>
+        <a href="#">Guide</a>
+      </nav>
+      <div class="chip">Pro plan</div>
+    </header>
+
+    <main class="user-shell">
+      <div class="page-head">
+        <h1>Today’s moves</h1>
+        <p>Daily VNS scan · 23 Sep 2026 · sideways scripts hidden</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="n">19</div><div class="l">Actionable today</div></div>
+        <div class="stat teji"><div class="n">8</div><div class="l">Teji (bullish)</div></div>
+        <div class="stat mandi"><div class="n">6</div><div class="l">Mandi (bearish)</div></div>
+        <div class="stat setup"><div class="n">5</div><div class="l">DT / DB setups</div></div>
+      </div>
+
+      <div class="filters" id="filters">
+        <button type="button" data-filter="all" class="active">All actionable</button>
+        <button type="button" data-filter="teji">Teji</button>
+        <button type="button" data-filter="mandi">Mandi</button>
+        <button type="button" data-filter="db">Double bottom</button>
+        <button type="button" data-filter="dt">Double top</button>
+      </div>
+
+      <div class="workspace">
+        <section class="board">
+          <div class="panel-h">
+            <h2>Opportunity board</h2>
+            <small>Click a script → chart opens</small>
+          </div>
+          <div class="rows" id="board"></div>
+        </section>
+
+        <section class="detail">
+          <div class="panel-h">
+            <h2>Script reading</h2>
+            <small>Daily chart + next possible move</small>
+          </div>
+          <div class="detail-body">
+            <div class="detail-title">
+              <div>
+                <h3 id="d-symbol">RELIANCE</h3>
+                <div style="color:var(--muted);font-size:0.85rem" id="d-name">Reliance Industries</div>
+              </div>
+              <div class="badges">
+                <span class="badge accent" id="d-trend">Bearish exhausted</span>
+                <span class="badge ok" id="d-signal">Double bottom · Buy zone</span>
+              </div>
+            </div>
+
+            <div id="chart"></div>
+
+            <div class="levels">
+              <div class="level"><div class="k">BU · Teji high</div><div class="v" id="d-bu">1,482</div></div>
+              <div class="level"><div class="k">BE · Mandi low</div><div class="v" id="d-be">1,401</div></div>
+              <div class="level"><div class="k">DB</div><div class="v" id="d-db">1,405</div></div>
+              <div class="level"><div class="k">Stop hint</div><div class="v" id="d-stop">1,392</div></div>
+            </div>
+
+            <div class="readbox" id="d-read">
+              Price held near a prior low (Double bottom). Mandi looks tired — early buy watch.
+              Keep stop just below the double-bottom area. Wait for strength; don’t force if it slips under stop.
+            </div>
+          </div>
+        </section>
+      </div>
+      <p class="hint">This is sample layout data so you can feel the flow. Real Nifty 50 analysis comes after you approve this design.</p>
+    </main>
+  </div>
+
+  <!-- ADMIN VIEW -->
+  <div id="view-admin" class="view">
+    <div class="admin-layout">
+      <aside class="sidebar">
+        <div class="brand">VNS</div>
+        <button class="side-link active" type="button">Overview</button>
+        <button class="side-link" type="button">Users</button>
+        <button class="side-link" type="button">Sync &amp; data</button>
+        <button class="side-link" type="button">Packages</button>
+      </aside>
+      <main class="admin-main">
+        <h1>Admin overview</h1>
+        <p class="sub">Operations console — not the trader board</p>
+
+        <div class="kpi">
+          <div class="stat"><div class="n">128</div><div class="l">Active users</div></div>
+          <div class="stat setup"><div class="n">42</div><div class="l">Trials</div></div>
+          <div class="stat teji"><div class="n">OK</div><div class="l">Sync health</div></div>
+          <div class="stat teji"><div class="n">Valid</div><div class="l">Upstox token</div></div>
+        </div>
+
+        <div class="admin-grid">
+          <div>
+            <table class="users">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Package</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>admin@vns.app</td>
+                  <td>Premium</td>
+                  <td>—</td>
+                  <td>Active</td>
+                  <td><button class="ghost" type="button">Edit</button></td>
+                </tr>
+                <tr>
+                  <td>trader1@mail.com</td>
+                  <td>Pro</td>
+                  <td>12 Oct</td>
+                  <td>Active</td>
+                  <td><button class="ghost" type="button">Extend</button></td>
+                </tr>
+                <tr>
+                  <td>trial@mail.com</td>
+                  <td>Trial</td>
+                  <td>28 Sep</td>
+                  <td>Active</td>
+                  <td><button class="ghost" type="button">Upgrade</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h3>Data sync</h3>
+            <p style="margin:0 0 0.75rem;color:var(--muted);font-size:0.9rem">
+              Last sync: today 20:48 · Nifty 50 · 15m→Monthly · 0 errors
+            </p>
+            <button class="primary" type="button">Run sync now</button>
+            <p class="hint" style="margin-top:1rem">
+              Admin lands here. Trading “Today’s moves” stays on the user side.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const SCRIPTS = [
+      {
+        id: "RELIANCE",
+        name: "Reliance Industries",
+        bucket: "db",
+        tag: "setup",
+        tagLabel: "DB",
+        signal: "Double bottom · Buy zone",
+        note: "Mandi thak rahi hai — held near support",
+        trend: "Bearish exhausted",
+        signalClass: "ok",
+        bu: "1,482", be: "1,401", db: "1,405", stop: "1,392",
+        read: "Price held near a prior low (Double bottom). Mandi looks tired — early buy watch. Keep stop just below the double-bottom area."
+      },
+      {
+        id: "TCS",
+        name: "Tata Consultancy",
+        bucket: "teji",
+        tag: "teji",
+        tagLabel: "Teji",
+        signal: "Breakout watch",
+        note: "Above last BU — strength continuing",
+        trend: "Bullish",
+        signalClass: "ok",
+        bu: "4,210", be: "3,980", db: "—", stop: "4,150",
+        read: "Structure is making higher highs (BU). Watch pullbacks as R; next buy cue is holding above BU on strength."
+      },
+      {
+        id: "INFY",
+        name: "Infosys",
+        bucket: "mandi",
+        tag: "mandi",
+        tagLabel: "Mandi",
+        signal: "Breakdown watch",
+        note: "Below last BE — sellers in control",
+        trend: "Bearish",
+        signalClass: "danger",
+        bu: "1,620", be: "1,545", db: "—", stop: "1,560",
+        read: "Sellers in control with lower lows (BE). Avoid catching knives; wait for DB or reclaim of BE before flipping long."
+      },
+      {
+        id: "HDFCBANK",
+        name: "HDFC Bank",
+        bucket: "dt",
+        tag: "setup",
+        tagLabel: "DT",
+        signal: "Double top · Sell zone",
+        note: "Teji tired near resistance",
+        trend: "Bullish exhausted",
+        signalClass: "danger",
+        bu: "1,720", be: "1,640", db: "—", stop: "1,735",
+        read: "Price stalled near a prior high (Double top). Teji looks tired — early short / exit longs. Stop just above the DT area."
+      },
+      {
+        id: "SBIN",
+        name: "State Bank of India",
+        bucket: "teji",
+        tag: "teji",
+        tagLabel: "Teji",
+        signal: "Pullback (R) in uptrend",
+        note: "Reaction only — wait for next cue",
+        trend: "Reactive",
+        signalClass: "accent",
+        bu: "820", be: "760", db: "—", stop: "790",
+        read: "Uptrend reacting (R). Not a final buy/sell yet — wait for breakout above BU or failure that flips structure."
+      },
+      {
+        id: "ITC",
+        name: "ITC",
+        bucket: "db",
+        tag: "setup",
+        tagLabel: "DB",
+        signal: "Double bottom · Buy zone",
+        note: "Atak near lows — possible turn",
+        trend: "Bearish exhausted",
+        signalClass: "ok",
+        bu: "475", be: "448", db: "450", stop: "442",
+        read: "Second touch of lows held (DB). Possible long zone if buyers show up; invalidation below stop hint."
+      }
+    ];
+
+    let selected = SCRIPTS[0].id;
+    let filter = "all";
+    let chart;
+    let series;
+
+    function seedCandles(bias) {
+      const out = [];
+      let t = Math.floor(Date.UTC(2026, 7, 1) / 1000);
+      let price = bias === "up" ? 100 : bias === "down" ? 140 : 120;
+      for (let i = 0; i < 60; i++) {
+        const drift = bias === "up" ? 0.35 : bias === "down" ? -0.35 : (Math.sin(i / 5) * 0.2);
+        const open = price;
+        const close = price + drift + (Math.random() - 0.5) * 2.2;
+        const high = Math.max(open, close) + Math.random() * 1.8;
+        const low = Math.min(open, close) - Math.random() * 1.8;
+        out.push({ time: t, open, high, low, close });
+        price = close;
+        t += 86400;
+      }
+      return out;
+    }
+
+    function ensureChart() {
+      const el = document.getElementById("chart");
+      if (chart) return;
+      chart = LightweightCharts.createChart(el, {
+        layout: { background: { color: "#fafcfd" }, textColor: "#152028" },
+        grid: {
+          vertLines: { color: "rgba(21,32,40,0.06)" },
+          horzLines: { color: "rgba(21,32,40,0.06)" }
+        },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false },
+        height: 300,
+        width: el.clientWidth
+      });
+      series = chart.addCandlestickSeries({
+        upColor: "#0b5c4a",
+        downColor: "#a12828",
+        borderVisible: false,
+        wickUpColor: "#0b5c4a",
+        wickDownColor: "#a12828"
+      });
+      window.addEventListener("resize", () => {
+        chart.applyOptions({ width: el.clientWidth });
+      });
+    }
+
+    function renderChart(item) {
+      ensureChart();
+      const bias = item.bucket === "teji" ? "up" : item.bucket === "mandi" || item.bucket === "dt" ? "down" : "flat";
+      series.setData(seedCandles(bias));
+      chart.timeScale().fitContent();
+      if (item.bu !== "—") {
+        // recreate series lines lightly by setData only; price lines accumulate, so clear via new series
+      }
+    }
+
+    function renderBoard() {
+      const board = document.getElementById("board");
+      const rows = SCRIPTS.filter((s) => filter === "all" || s.bucket === filter);
+      board.innerHTML = rows.map((s) => `
+        <button class="row ${s.id === selected ? "selected" : ""}" data-id="${s.id}" type="button">
+          <div class="sym">${s.id}</div>
+          <div>
+            <div class="sig">${s.signal}</div>
+            <div class="note">${s.note}</div>
+          </div>
+          <span class="tag ${s.tag}">${s.tagLabel}</span>
+        </button>
+      `).join("");
+      board.querySelectorAll(".row").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selected = btn.dataset.id;
+          renderBoard();
+          renderDetail();
+        });
+      });
+    }
+
+    function renderDetail() {
+      const item = SCRIPTS.find((s) => s.id === selected) || SCRIPTS[0];
+      document.getElementById("d-symbol").textContent = item.id;
+      document.getElementById("d-name").textContent = item.name;
+      document.getElementById("d-trend").textContent = item.trend;
+      const sig = document.getElementById("d-signal");
+      sig.textContent = item.signal;
+      sig.className = "badge " + item.signalClass;
+      document.getElementById("d-bu").textContent = item.bu;
+      document.getElementById("d-be").textContent = item.be;
+      document.getElementById("d-db").textContent = item.db;
+      document.getElementById("d-stop").textContent = item.stop;
+      document.getElementById("d-read").textContent = item.read;
+      renderChart(item);
+    }
+
+    document.getElementById("filters").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-filter]");
+      if (!btn) return;
+      filter = btn.dataset.filter;
+      document.querySelectorAll("#filters button").forEach((b) => b.classList.toggle("active", b === btn));
+      renderBoard();
+    });
+
+    function show(view) {
+      document.getElementById("view-user").classList.toggle("active", view === "user");
+      document.getElementById("view-admin").classList.toggle("active", view === "admin");
+      document.getElementById("btn-user").classList.toggle("active", view === "user");
+      document.getElementById("btn-admin").classList.toggle("active", view === "admin");
+      if (view === "user") {
+        requestAnimationFrame(() => {
+          ensureChart();
+          renderDetail();
+        });
+      }
+    }
+
+    document.getElementById("btn-user").addEventListener("click", () => show("user"));
+    document.getElementById("btn-admin").addEventListener("click", () => show("admin"));
+
+    renderBoard();
+    renderDetail();
+  </script>
+</body>
+</html>

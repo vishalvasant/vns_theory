@@ -1,28 +1,188 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import Candle, Instrument, Timeframe, User, VnsAnalysis, VnsMark
-from app.schemas import AnalysisOut, CandleOut, InstrumentOut, MarkOut, SyncRequest
-from app.services.sync import seed_nifty50, sync_all_nifty50
+from app.models import Candle, Instrument, Timeframe, User, VnsAnalysis, VnsMark, WatchlistItem
+from app.schemas import (
+    AnalysisOut,
+    CandleOut,
+    InstrumentOut,
+    InstrumentSearchHit,
+    MarkOut,
+    OpenInstrumentRequest,
+    OpenInstrumentResponse,
+    SyncRequest,
+)
+from app.services.instruments_master import find_by_instrument_key, search_instruments
+from app.services.sync import (
+    add_to_watchlist,
+    ensure_instrument_from_master,
+    seed_nifty50,
+    sync_all_nifty50,
+)
 
 router = APIRouter(tags=["market"])
 
 
 @router.get("/instruments", response_model=list[InstrumentOut])
 async def list_instruments(
-    nifty50_only: bool = True,
+    nifty50_only: bool = False,
+    watchlist_only: bool = False,
+    scope: str | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> list[Instrument]:
+    """
+    scope: watchlist | nifty50 | all
+    Defaults to watchlist when the user has items, otherwise nifty50.
+    """
+    effective = (scope or "").lower().strip()
+    if not effective:
+        if watchlist_only:
+            effective = "watchlist"
+        elif nifty50_only:
+            effective = "nifty50"
+        else:
+            has_watch = await db.scalar(
+                select(WatchlistItem.id).where(WatchlistItem.user_id == user.id).limit(1)
+            )
+            effective = "watchlist" if has_watch is not None else "nifty50"
+
+    if effective == "watchlist":
+        watched = list(
+            (
+                await db.execute(
+                    select(Instrument)
+                    .join(WatchlistItem, WatchlistItem.instrument_id == Instrument.id)
+                    .where(WatchlistItem.user_id == user.id, Instrument.is_active.is_(True))
+                    .order_by(WatchlistItem.created_at.desc())
+                )
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+        nifty = list(
+            (
+                await db.execute(
+                    select(Instrument)
+                    .where(Instrument.is_active.is_(True), Instrument.is_nifty50.is_(True))
+                    .order_by(Instrument.symbol)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Saved scripts first, then Nifty 50 starters (deduped)
+        seen: set[int] = set()
+        merged: list[Instrument] = []
+        for row in watched + nifty:
+            if row.id in seen:
+                continue
+            seen.add(row.id)
+            merged.append(row)
+        return merged
+
     q = select(Instrument).where(Instrument.is_active.is_(True)).order_by(Instrument.symbol)
-    if nifty50_only:
+    if effective == "nifty50":
         q = q.where(Instrument.is_nifty50.is_(True))
     result = await db.execute(q)
     return list(result.scalars().all())
+
+
+@router.get("/instruments/search", response_model=list[InstrumentSearchHit])
+async def instruments_search(
+    q: str = Query(min_length=1, max_length=64),
+    exchange: str | None = Query(default=None, pattern="^(NSE|BSE|nse|bse)$"),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[InstrumentSearchHit]:
+    hits = await search_instruments(q, exchange=exchange, limit=limit)
+    keys = [h.instrument_key for h in hits]
+    existing_keys: set[str] = set()
+    if keys:
+        existing = await db.execute(
+            select(Instrument.instrument_key).where(Instrument.instrument_key.in_(keys))
+        )
+        existing_keys = set(existing.scalars().all())
+    return [
+        InstrumentSearchHit(
+            exchange=h.exchange,
+            segment=h.segment,
+            symbol=h.symbol,
+            trading_symbol=h.trading_symbol,
+            name=h.name,
+            isin=h.isin,
+            instrument_key=h.instrument_key,
+            tick_size=h.tick_size,
+            instrument_type=h.instrument_type,
+            in_library=h.instrument_key in existing_keys,
+        )
+        for h in hits
+    ]
+
+
+@router.post("/instruments/open", response_model=OpenInstrumentResponse)
+async def open_instrument(
+    payload: OpenInstrumentRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> OpenInstrumentResponse:
+    hit = await find_by_instrument_key(payload.instrument_key)
+    if not hit:
+        # Allow reopening keys already stored even if master cache is stale
+        existing = (
+            await db.execute(
+                select(Instrument).where(Instrument.instrument_key == payload.instrument_key)
+            )
+        ).scalar_one_or_none()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Instrument not found in NSE/BSE master")
+        inst = existing
+    else:
+        inst = await ensure_instrument_from_master(db, hit)
+
+    await add_to_watchlist(db, user.id, inst.id)
+
+    sync_result = None
+    if payload.sync:
+        tfs = None if payload.all_timeframes else [Timeframe.DAY]
+        sync_result = await sync_all_nifty50(
+            db,
+            symbol=inst.symbol,
+            timeframes=tfs,
+        )
+
+    return OpenInstrumentResponse(
+        instrument=InstrumentOut.model_validate(inst),
+        added_to_watchlist=True,
+        sync=sync_result,
+    )
+
+
+@router.delete("/watchlist/{symbol}")
+async def remove_watchlist_item(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    inst = (
+        await db.execute(select(Instrument).where(Instrument.symbol == symbol.upper()))
+    ).scalar_one_or_none()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instrument not found")
+    await db.execute(
+        delete(WatchlistItem).where(
+            WatchlistItem.user_id == user.id,
+            WatchlistItem.instrument_id == inst.id,
+        )
+    )
+    await db.commit()
+    return {"removed": True, "symbol": inst.symbol}
 
 
 @router.get("/instruments/{symbol}", response_model=InstrumentOut)

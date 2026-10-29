@@ -30,12 +30,17 @@ docker compose up --build
 - API docs: http://localhost:8000/docs
 - Default admin: `admin@vns.app` / `admin12345`
 
-4. On the dashboard, pick a Nifty 50 script → **Sync + Analyze**.
+4. Sign in:
+   - Users land on **Today** (`/today`) — daily Teji/Mandi/DT/DB board
+   - Admins land on **Admin** (`/admin`) — users + sync ops
+   - Default admin: `admin@vns.app` / `admin12345`
+
+5. On Today, filter the board → click a script → read chart + next move.
 
 ## Current scope
 
 - Nifty 50 equities only
-- Daily VNS marks primary; chart TF switcher for day / week / 30m
+- Chart TF switcher: 15m / 30m / 1h / 4h / day / week / month (Upstox v3 candles)
 - DT/DB uses absolute + percent tolerance (never exact float equality)
 
 ## Security note

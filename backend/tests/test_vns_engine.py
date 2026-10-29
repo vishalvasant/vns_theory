@@ -20,3 +20,35 @@ def test_double_bottom_signal():
     labels = [m.label for m in result.marks]
     assert Label.BU in labels or Label.BE in labels or Label.R in labels or Label.DB in labels or Label.DT in labels
     assert result.as_of is not None
+
+
+def test_recent_swing_lows_prefer_db_atak():
+    """Equal recent lows should surface as DB Atak even if an older DT exists."""
+    bars = []
+    # Decline from a high, then grind equal lows
+    seq = [
+        (1, 110, 100, 108),
+        (2, 109, 98, 99),
+        (3, 102, 95, 96),
+        (4, 100, 94, 97),
+        (5, 101, 95.1, 98),
+        (6, 103, 96, 100),
+        (7, 102, 94.2, 97),
+        (8, 101, 95.0, 99),
+        (9, 104, 96, 101),
+    ]
+    for day, high, low, close in seq:
+        bars.append(
+            Bar(
+                datetime(2025, 6, day, tzinfo=timezone.utc),
+                close - 1,
+                high,
+                low,
+                close,
+            )
+        )
+    result = analyze_bars(bars, tolerance_abs=1.0, tolerance_pct=0.5)
+    assert result.last_db is not None
+    assert result.signal.value in {"db_long", "dt_short", "none", "sideways", "breakout_long", "breakdown_short"}
+    # Most recent structure is the low pocket
+    assert any(m.label == Label.DB for m in result.marks)

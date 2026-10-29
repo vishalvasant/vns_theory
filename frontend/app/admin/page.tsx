@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import AppShell, { type AdminNavId } from "@/components/AppShell";
 import {
   AdminUser,
   PackageTier,
@@ -10,6 +11,7 @@ import {
   listAdminUsers,
   logout,
   me,
+  triggerSync,
   updateAdminUser,
 } from "@/lib/api";
 
@@ -19,8 +21,11 @@ export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [tab, setTab] = useState<AdminNavId>("pulse");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,15 +34,14 @@ export default function AdminPage() {
   const [makeAdmin, setMakeAdmin] = useState(false);
 
   async function refresh() {
-    const rows = await listAdminUsers();
-    setUsers(rows);
+    setUsers(await listAdminUsers());
   }
 
   useEffect(() => {
     me()
       .then(async (u) => {
         if (!u.is_admin) {
-          router.replace("/dashboard");
+          router.replace("/today");
           return;
         }
         setUser(u);
@@ -48,6 +52,13 @@ export default function AdminPage() {
         router.replace("/");
       });
   }, [router]);
+
+  const kpis = useMemo(() => {
+    const active = users.filter((u) => u.is_active).length;
+    const trials = users.filter((u) => u.package === "trial").length;
+    const paying = users.filter((u) => u.is_active && u.package !== "trial").length;
+    return { active, trials, paying, total: users.length };
+  }, [users]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -88,91 +99,104 @@ export default function AdminPage() {
     }
   }
 
+  async function onSync() {
+    setSyncing(true);
+    setSyncMsg("");
+    setError("");
+    try {
+      const res = await triggerSync(undefined, true);
+      setSyncMsg(
+        `Synced ${res.synced} · analyzed ${res.analyzed} · candles ${res.candle_rows} · errors ${res.errors?.length || 0}`
+      );
+      if (res.errors?.length) setError(res.errors.slice(0, 3).join(" | "));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   if (!user) {
     return (
-      <div className="app-shell">
+      <div className="wrap">
         <p className="muted">Loading admin…</p>
       </div>
     );
   }
 
+  const title =
+    tab === "pulse" ? "Business pulse" : tab === "members" ? "Members" : "Data health";
+  const subtitle =
+    tab === "pulse"
+      ? "Seats, trials, and product health"
+      : tab === "members"
+        ? "Create, extend, suspend accounts"
+        : "Keep Upstox sync green before market open";
+
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          VNS <span>Admin</span>
+    <AppShell
+      mode="admin"
+      user={user}
+      active={tab}
+      title={title}
+      subtitle={subtitle}
+      onNavigate={setTab}
+      actions={
+        tab === "data" ? (
+          <button className="btn" type="button" onClick={onSync} disabled={syncing}>
+            {syncing ? "Running…" : "Run sync now"}
+          </button>
+        ) : null
+      }
+    >
+      {error && <p className="error">{error}</p>}
+
+      <div className="kpi">
+        <div className="mood-card">
+          <div className="k">Paying</div>
+          <div className="v" style={{ color: "var(--teal)" }}>
+            {kpis.paying}
+          </div>
+          <div className="s">Active paid seats</div>
         </div>
-        <nav className="nav">
-          <button className="btn secondary" onClick={() => router.push("/dashboard")}>
-            Dashboard
-          </button>
-          <span>
-            {user.email} · admin
-          </span>
-          <button
-            className="btn secondary"
-            onClick={() => {
-              logout();
-              router.push("/");
-            }}
-          >
-            Log out
-          </button>
-        </nav>
-      </header>
+        <div className="mood-card">
+          <div className="k">Trials</div>
+          <div className="v" style={{ color: "var(--gold)" }}>
+            {kpis.trials}
+          </div>
+          <div className="s">Convert this week</div>
+        </div>
+        <div className="mood-card">
+          <div className="k">Active</div>
+          <div className="v">{kpis.active}</div>
+          <div className="s">All active accounts</div>
+        </div>
+        <div className="mood-card">
+          <div className="k">Total</div>
+          <div className="v">{kpis.total}</div>
+          <div className="s">Registered users</div>
+        </div>
+      </div>
 
-      <div className="grid" style={{ gap: "1rem" }}>
-        <section className="panel">
-          <h1>User management</h1>
-          <p className="muted">Create users, change packages, activate/deactivate accounts.</p>
-          {error && <p className="error">{error}</p>}
-
-          <form onSubmit={onCreate} className="grid" style={{ marginTop: "1rem", gap: "0.5rem" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: "0.75rem" }}>
-              <input className="input" style={{ margin: 0 }} placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-              <input className="input" style={{ margin: 0 }} type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              <input className="input" style={{ margin: 0 }} type="password" placeholder="Temp password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
-              <select className="input" style={{ margin: 0 }} value={pkg} onChange={(e) => setPkg(e.target.value as PackageTier)}>
-                {PACKAGES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="muted" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} />
-              Make admin
-            </label>
-            <div>
-              <button className="btn" type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Add user"}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section className="panel">
-          <h2>All users ({users.length})</h2>
+      {(tab === "pulse" || tab === "members") && (
+        <div className="admin-grid">
           <table className="table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Email</th>
-                <th>Name</th>
-                <th>Package</th>
+                <th>Member</th>
+                <th>Plan</th>
                 <th>Expires</th>
                 <th>Status</th>
-                <th>Role</th>
-                <th>Actions</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td>{u.id}</td>
-                  <td>{u.email}</td>
-                  <td>{u.full_name || "—"}</td>
+                  <td>
+                    {u.email}
+                    {u.is_admin ? " · admin" : ""}
+                  </td>
                   <td>
                     <select
                       className="input"
@@ -191,42 +215,72 @@ export default function AdminPage() {
                   <td className="muted">{u.package_expires_at ? String(u.package_expires_at).slice(0, 10) : "—"}</td>
                   <td>
                     <span className={`badge ${u.is_active ? "ok" : "danger"}`}>
-                      {u.is_active ? "active" : "disabled"}
+                      {u.is_active ? "Active" : "Disabled"}
                     </span>
                   </td>
-                  <td>{u.is_admin ? "admin" : "user"}</td>
                   <td style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                    <button className="ghost" type="button" disabled={saving} onClick={() => patch(u.id, { extend_days: 30 })}>
+                      Extend
+                    </button>
                     <button
-                      className="btn secondary"
-                      style={{ padding: "0.25rem 0.6rem" }}
+                      className="ghost"
+                      type="button"
                       disabled={saving}
                       onClick={() => patch(u.id, { is_active: !u.is_active })}
                     >
-                      {u.is_active ? "Disable" : "Enable"}
-                    </button>
-                    <button
-                      className="btn secondary"
-                      style={{ padding: "0.25rem 0.6rem" }}
-                      disabled={saving}
-                      onClick={() => patch(u.id, { extend_days: 30 })}
-                    >
-                      +30 days
-                    </button>
-                    <button
-                      className="btn secondary"
-                      style={{ padding: "0.25rem 0.6rem" }}
-                      disabled={saving || u.id === user.id}
-                      onClick={() => patch(u.id, { is_admin: !u.is_admin })}
-                    >
-                      {u.is_admin ? "Remove admin" : "Make admin"}
+                      {u.is_active ? "Suspend" : "Enable"}
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </section>
-      </div>
-    </div>
+
+          <div className="panel">
+            <h3>Add member</h3>
+            <form onSubmit={onCreate}>
+              <input className="input" placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                className="input"
+                type="password"
+                placeholder="Temp password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+              <select className="input" value={pkg} onChange={(e) => setPkg(e.target.value as PackageTier)}>
+                {PACKAGES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <label className="muted" style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem" }}>
+                <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} />
+                Make admin
+              </label>
+              <button className="btn" type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Add member"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {(tab === "pulse" || tab === "data") && (
+        <div className="panel" style={{ marginTop: tab === "pulse" ? "1rem" : 0 }}>
+          <h3>Data health</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Keep sync green before market open. Pulls Nifty 50 candles (15m→Monthly) and recomputes VNS marks.
+          </p>
+          <button className="btn" type="button" onClick={onSync} disabled={syncing}>
+            {syncing ? "Running…" : "Run sync now"}
+          </button>
+          {syncMsg && <p className="muted">{syncMsg}</p>}
+        </div>
+      )}
+    </AppShell>
   );
 }

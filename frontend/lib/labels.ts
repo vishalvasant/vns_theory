@@ -65,13 +65,13 @@ export const SIGNAL_INFO: Record<
     bias: "sell",
   },
   dt_short: {
-    title: "Double top (Sell zone)",
-    meaning: "A double top formed — early sign the up-move may reverse. Tighter stop than waiting for full breakdown.",
+    title: "Atak · Double top (DT)",
+    meaning: "Atak (A) / double top — price stalled near a prior high. Early sell / exit-long zone with a tight stop above the tops.",
     bias: "sell",
   },
   db_long: {
-    title: "Double bottom (Buy zone)",
-    meaning: "A double bottom formed — early sign the down-move may reverse. Tighter stop than waiting for full breakout.",
+    title: "Atak · Double bottom (DB)",
+    meaning: "Atak (A) / double bottom — price held near a prior low. Early buy / exit-short zone with a tight stop below the bottoms.",
     bias: "buy",
   },
   sideways: {

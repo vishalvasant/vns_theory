@@ -4,10 +4,13 @@ import asyncio
 import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+IST = ZoneInfo("Asia/Kolkata")
 
 from app.models import (
     Candle,
@@ -17,7 +20,9 @@ from app.models import (
     Timeframe,
     VnsAnalysis,
     VnsMark,
+    WatchlistItem,
 )
+from app.services.instruments_master import MasterInstrument
 from app.services.upstox import UpstoxClient, UpstoxError
 from app.services.vns_engine import Bar, Label, Signal, analyze_bars
 
@@ -40,26 +45,114 @@ SIGNAL_MAP = {
     Signal.NONE: SignalType.NONE,
 }
 
-# Upstox historical lookback ceilings (per-request limits)
+# Upstox v3 historical lookback ceilings (per-request limits)
 TIMEFRAME_DAYS_BACK: dict[Timeframe, int] = {
-    Timeframe.MINUTE_1: 30,
-    Timeframe.MINUTE_30: 90,  # v2 rejects ~1y ranges for many symbols
-    Timeframe.DAY: 365,
+    Timeframe.MINUTE_15: 30,  # v3: ≤15m intervals → max ~1 month
+    Timeframe.MINUTE_30: 90,  # v3: >15m minutes → max ~1 quarter
+    Timeframe.HOUR_1: 90,
+    Timeframe.HOUR_4: 90,
+    Timeframe.DAY: 3650,
     Timeframe.WEEK: 3650,
     Timeframe.MONTH: 3650,
 }
 
 ALL_TIMEFRAMES: list[Timeframe] = [
-    Timeframe.MINUTE_1,
+    Timeframe.MINUTE_15,
     Timeframe.MINUTE_30,
+    Timeframe.HOUR_1,
+    Timeframe.HOUR_4,
     Timeframe.DAY,
     Timeframe.WEEK,
     Timeframe.MONTH,
 ]
 
+INTRADAY_TIMEFRAMES = {
+    Timeframe.MINUTE_15,
+    Timeframe.MINUTE_30,
+    Timeframe.HOUR_1,
+    Timeframe.HOUR_4,
+}
+
 
 def instrument_key_from_isin(isin: str) -> str:
     return f"NSE_EQ|{isin}"
+
+
+def _tolerance_for_tick(tick_size: float) -> tuple[float, float]:
+    tick = tick_size if tick_size > 0 else 0.05
+    tol_abs = max(tick * 4, 0.5)
+    tol_pct = 0.15
+    return tol_abs, tol_pct
+
+
+async def ensure_instrument_from_master(
+    db: AsyncSession,
+    hit: MasterInstrument,
+    *,
+    is_nifty50: bool = False,
+) -> Instrument:
+    existing = await db.execute(
+        select(Instrument).where(Instrument.instrument_key == hit.instrument_key)
+    )
+    inst = existing.scalar_one_or_none()
+    if inst:
+        inst.name = hit.name or inst.name
+        inst.exchange = hit.exchange
+        inst.segment = hit.segment
+        inst.isin = hit.isin or inst.isin
+        inst.trading_symbol = hit.trading_symbol
+        inst.tick_size = hit.tick_size
+        inst.is_active = True
+        if is_nifty50:
+            inst.is_nifty50 = True
+        await db.commit()
+        await db.refresh(inst)
+        return inst
+
+    by_symbol = await db.execute(select(Instrument).where(Instrument.symbol == hit.symbol))
+    conflict = by_symbol.scalar_one_or_none()
+    if conflict and conflict.instrument_key != hit.instrument_key:
+        # Extremely rare: keep existing symbol owner; qualify with exchange token
+        symbol = f"{hit.symbol}.{hit.exchange}"
+    else:
+        symbol = hit.symbol
+
+    tol_abs, tol_pct = _tolerance_for_tick(hit.tick_size)
+    inst = Instrument(
+        symbol=symbol,
+        name=hit.name,
+        exchange=hit.exchange,
+        segment=hit.segment,
+        isin=hit.isin,
+        trading_symbol=hit.trading_symbol,
+        instrument_key=hit.instrument_key,
+        is_nifty50=is_nifty50,
+        tick_size=hit.tick_size,
+        tolerance_abs=tol_abs,
+        tolerance_pct=tol_pct,
+        is_active=True,
+    )
+    db.add(inst)
+    await db.commit()
+    await db.refresh(inst)
+    return inst
+
+
+async def add_to_watchlist(db: AsyncSession, user_id: int, instrument_id: int) -> WatchlistItem:
+    existing = await db.execute(
+        select(WatchlistItem).where(
+            WatchlistItem.user_id == user_id,
+            WatchlistItem.instrument_id == instrument_id,
+        )
+    )
+    item = existing.scalar_one_or_none()
+    if item:
+        return item
+    item = WatchlistItem(user_id=user_id, instrument_id=instrument_id)
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
 
 
 async def seed_nifty50(db: AsyncSession) -> int:
@@ -99,6 +192,19 @@ def _parse_ts(value: str | int | float) -> datetime:
     return dt
 
 
+def _bar_ts(value: str | int | float, timeframe: Timeframe) -> datetime:
+    """
+    Normalize candle timestamps.
+    For day/week/month, pin to the Asia/Kolkata calendar date at 00:00 UTC
+    so API clients don't shift the trading date when serializing timestamptz.
+    """
+    dt = _parse_ts(value)
+    if timeframe in {Timeframe.DAY, Timeframe.WEEK, Timeframe.MONTH}:
+        local = dt.astimezone(IST)
+        return datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 async def sync_instrument_candles(
     db: AsyncSession,
     instrument: Instrument,
@@ -115,8 +221,9 @@ async def sync_instrument_candles(
         to_d,
         from_d,
     )
-    # Historical endpoint often omits the live session — merge today's intraday.
-    if timeframe in {Timeframe.MINUTE_1, Timeframe.MINUTE_30}:
+    # Historical endpoint often omits the live / incomplete session —
+    # merge today's candles for intraday TFs and the forming daily bar.
+    if timeframe in INTRADAY_TIMEFRAMES or timeframe == Timeframe.DAY:
         try:
             today_rows = await client.get_intraday_candles(
                 instrument.instrument_key,
@@ -137,7 +244,7 @@ async def sync_instrument_candles(
             {
                 "instrument_id": instrument.id,
                 "timeframe": timeframe,
-                "ts": _parse_ts(row[0]),
+                "ts": _bar_ts(row[0], timeframe),
                 "open": float(row[1]),
                 "high": float(row[2]),
                 "low": float(row[3]),
@@ -149,6 +256,16 @@ async def sync_instrument_candles(
     # Deduplicate by ts within batch
     by_ts = {p["ts"]: p for p in payload}
     payload = list(by_ts.values())
+    # Day/week/month: also collapse to one bar per calendar date (prefer higher volume /
+    # later session merge so today's forming bar wins over a stale historical stub).
+    if timeframe in {Timeframe.DAY, Timeframe.WEEK, Timeframe.MONTH}:
+        by_day: dict = {}
+        for p in payload:
+            key = p["ts"].date() if hasattr(p["ts"], "date") else p["ts"]
+            prev = by_day.get(key)
+            if prev is None or float(p.get("volume") or 0) >= float(prev.get("volume") or 0):
+                by_day[key] = p
+        payload = list(by_day.values())
 
     chunk_size = 500
     for i in range(0, len(payload), chunk_size):
@@ -182,21 +299,36 @@ async def run_vns_for_instrument(
         .order_by(Candle.ts.asc())
     )
     candles = list(result.scalars().all())
+    # Guard against duplicate calendar bars corrupting structure (common after merges)
+    if timeframe in {Timeframe.DAY, Timeframe.WEEK, Timeframe.MONTH}:
+        by_day: dict = {}
+        for c in candles:
+            key = c.ts.astimezone(IST).date() if c.ts.tzinfo else c.ts.date()
+            prev = by_day.get(key)
+            if prev is None or (c.volume or 0) >= (prev.volume or 0):
+                by_day[key] = c
+        candles = [by_day[k] for k in sorted(by_day.keys())]
     bars = [
         Bar(ts=c.ts, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles
     ]
-    # Slightly looser abs tolerance on higher TFs
+    # Slightly looser abs tolerance on higher TFs; day needs enough room for
+    # high-priced stocks (Atak vs recent swing, not tick-exact).
     tol_abs = instrument.tolerance_abs
+    tol_pct = instrument.tolerance_pct
     if timeframe in {Timeframe.WEEK, Timeframe.MONTH}:
         tol_abs = max(tol_abs, instrument.tolerance_abs * 3)
-    elif timeframe == Timeframe.MINUTE_1:
+        tol_pct = max(tol_pct, 0.25)
+    elif timeframe == Timeframe.DAY:
+        tol_abs = max(tol_abs, instrument.tick_size * 20, 1.0)
+        tol_pct = max(tol_pct, 0.25)
+    elif timeframe in {Timeframe.MINUTE_15, Timeframe.MINUTE_30}:
         tol_abs = max(instrument.tick_size * 4, instrument.tolerance_abs * 0.5)
 
     analysis = analyze_bars(
         bars,
         tick_size=instrument.tick_size,
         tolerance_abs=tol_abs,
-        tolerance_pct=instrument.tolerance_pct,
+        tolerance_pct=tol_pct,
     )
 
     await db.execute(
@@ -250,10 +382,22 @@ async def sync_all_nifty50(
     days_back: int | None = None,
     symbol: str | None = None,
     timeframes: list[Timeframe] | None = None,
+    *,
+    include_watchlist: bool = True,
 ) -> dict:
-    q = select(Instrument).where(Instrument.is_active.is_(True), Instrument.is_nifty50.is_(True))
+    """
+    Sync candles + VNS for active instruments.
+    - With symbol: that instrument only (Nifty or user-opened).
+    - Without symbol: Nifty 50 + any watchlisted scripts (scheduled worker).
+    """
+    q = select(Instrument).where(Instrument.is_active.is_(True))
     if symbol:
         q = q.where(Instrument.symbol == symbol.upper())
+    elif include_watchlist:
+        watched = select(WatchlistItem.instrument_id).distinct()
+        q = q.where(or_(Instrument.is_nifty50.is_(True), Instrument.id.in_(watched)))
+    else:
+        q = q.where(Instrument.is_nifty50.is_(True))
     result = await db.execute(q)
     instruments = list(result.scalars().all())
 

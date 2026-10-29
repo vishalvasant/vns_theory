@@ -32,6 +32,9 @@ class InstrumentOut(BaseModel):
     id: int
     symbol: str
     name: str
+    exchange: str = "NSE"
+    segment: str = "EQ"
+    trading_symbol: str = ""
     instrument_key: str
     tick_size: float
     tolerance_abs: float
@@ -41,6 +44,31 @@ class InstrumentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class InstrumentSearchHit(BaseModel):
+    exchange: str
+    segment: str
+    symbol: str
+    trading_symbol: str
+    name: str
+    isin: str
+    instrument_key: str
+    tick_size: float
+    instrument_type: str
+    in_library: bool = False
+
+
+class OpenInstrumentRequest(BaseModel):
+    instrument_key: str
+    sync: bool = True
+    all_timeframes: bool = True
+
+
+class OpenInstrumentResponse(BaseModel):
+    instrument: InstrumentOut
+    added_to_watchlist: bool = True
+    sync: Optional[dict] = None
 
 
 class CandleOut(BaseModel):

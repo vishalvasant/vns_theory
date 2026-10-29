@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VNS — Persona-driven layout review (v2)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --ink: #0e1a24;
+      --ink-2: #243443;
+      --muted: #5c6b78;
+      --line: #d9e0e7;
+      --paper: #f7f9fb;
+      --surface: #ffffff;
+      --teal: #0a6b5a;
+      --teal-soft: #e4f3ef;
+      --coral: #c23b2e;
+      --coral-soft: #f9eae8;
+      --gold: #9a6b16;
+      --gold-soft: #f6eedc;
+      --font: "IBM Plex Sans", system-ui, sans-serif;
+      --serif: "Source Serif 4", Georgia, serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--paper);
+      min-height: 100vh;
+    }
+
+    /* Review chrome */
+    .review {
+      background: var(--ink);
+      color: #c9d5e0;
+      padding: 0.85rem 1.25rem 1rem;
+    }
+    .review h1 {
+      margin: 0 0 0.35rem;
+      font-family: var(--serif);
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .review p { margin: 0 0 0.85rem; font-size: 0.86rem; max-width: 920px; line-height: 1.45; }
+    .persona-tabs, .screen-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.65rem;
+    }
+    .persona-tabs button, .screen-tabs button {
+      border: 1px solid #314554;
+      background: #162430;
+      color: #aebcc9;
+      border-radius: 999px;
+      padding: 0.38rem 0.8rem;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .persona-tabs button.on, .screen-tabs button.on {
+      background: #fff;
+      color: var(--ink);
+      border-color: #fff;
+    }
+    .persona-note {
+      background: #162430;
+      border: 1px solid #314554;
+      border-radius: 10px;
+      padding: 0.75rem 0.9rem;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      color: #d5e0ea;
+    }
+    .persona-note strong { color: #fff; }
+
+    .screen { display: none; }
+    .screen.on { display: block; }
+
+    /* App shell */
+    .appbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.5rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    .logo {
+      font-family: var(--serif);
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo em {
+      font-style: italic;
+      font-weight: 500;
+      color: var(--teal);
+    }
+    .app-nav {
+      display: flex;
+      gap: 0.25rem;
+      background: var(--paper);
+      padding: 0.25rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+    .app-nav button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 600;
+      padding: 0.45rem 0.95rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .app-nav button.on {
+      background: var(--ink);
+      color: #fff;
+    }
+    .who {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .pill {
+      background: var(--teal-soft);
+      color: var(--teal);
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .wrap {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 1.15rem 1.5rem 2.5rem;
+    }
+
+    /* Brief */
+    .brief {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 900px) {
+      .brief { grid-template-columns: 1fr; }
+      .desk { grid-template-columns: 1fr !important; }
+      .mood { grid-template-columns: 1fr 1fr !important; }
+    }
+    .brief-main {
+      background: var(--ink);
+      color: #e8eef4;
+      border-radius: 18px;
+      padding: 1.25rem 1.35rem;
+      min-height: 140px;
+    }
+    .eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8fa3b4;
+      margin-bottom: 0.45rem;
+    }
+    .brief-main h2 {
+      margin: 0 0 0.45rem;
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: clamp(1.45rem, 2.4vw, 1.95rem);
+      letter-spacing: -0.02em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .brief-main p {
+      margin: 0;
+      color: #b7c6d3;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      max-width: 46ch;
+    }
+    .mood {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.6rem;
+    }
+    .mood-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0.85rem 0.9rem;
+    }
+    .mood-card .k {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .mood-card .v {
+      font-family: var(--mono);
+      font-size: 1.55rem;
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+    .mood-card.teji .v { color: var(--teal); }
+    .mood-card.mandi .v { color: var(--coral); }
+    .mood-card.rev .v { color: var(--gold); }
+    .mood-card .s { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; }
+
+    /* Desk */
+    .desk {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .rail, .stage {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .rail-h, .stage-h {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+    .rail-h h3, .stage-h h3 {
+      margin: 0;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .rail-h span, .stage-h span { color: var(--muted); font-size: 0.78rem; }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      padding: 0.75rem 1rem 0;
+    }
+    .filters button {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 0.32rem 0.7rem;
+      font: inherit;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .filters button.on {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .cards { padding: 0.75rem; display: grid; gap: 0.55rem; max-height: 680px; overflow: auto; }
+    .setup {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 14px;
+      padding: 0.8rem 0.85rem;
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .setup:hover { border-color: #b8c5d1; }
+    .setup.on {
+      background: var(--teal-soft);
+      border-color: #9ecaba;
+    }
+    .setup .top {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.35rem;
+    }
+    .setup .sym {
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: -0.01em;
+    }
+    .bias {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.18rem 0.45rem;
+      border-radius: 6px;
+    }
+    .bias.buy { background: var(--teal-soft); color: var(--teal); }
+    .bias.sell { background: var(--coral-soft); color: var(--coral); }
+    .bias.wait { background: #eef2f5; color: var(--muted); }
+    .setup .action {
+      font-family: var(--serif);
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      margin: 0 0 0.25rem;
+      line-height: 1.25;
+    }
+    .setup .why {
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .stage-body { padding: 1rem; display: grid; gap: 0.85rem; }
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .title-row h2 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 1.8rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .title-row .meta { color: var(--muted); font-size: 0.86rem; }
+    .decision {
+      display: grid;
+      grid-template-columns: 1.2fr repeat(3, 1fr);
+      gap: 0.55rem;
+    }
+    @media (max-width: 900px) {
+      .decision { grid-template-columns: 1fr 1fr; }
+    }
+    .dbox {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.7rem 0.8rem;
+      background: var(--paper);
+    }
+    .dbox.primary {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+    .dbox .lab {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .dbox.primary .lab { color: #8fa3b4; }
+    .dbox .val {
+      font-family: var(--serif);
+      font-size: 1.05rem;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    .dbox.primary .val { color: #fff; font-size: 1.15rem; }
+    .dbox .num {
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    #chart {
+      height: 340px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcfd;
+    }
+    .explain {
+      font-size: 0.92rem;
+      line-height: 1.5;
+      color: var(--ink-2);
+      padding: 0.85rem 0.95rem;
+      background: var(--teal-soft);
+      border-radius: 12px;
+      border-left: 3px solid var(--teal);
+    }
+
+    /* Learn */
+    .learn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+    }
+    @media (max-width: 900px) {
+      .learn-grid { grid-template-columns: 1fr; }
+    }
+    .learn-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 1.1rem;
+    }
+    .learn-card h3 {
+      margin: 0 0 0.4rem;
+      font-family: var(--serif);
+      font-size: 1.2rem;
+    }
+    .learn-card p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+    .learn-card .code {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--teal);
+      margin-bottom: 0.35rem;
+    }
+
+    /* Admin */
+    .admin {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: calc(100vh - 180px);
+    }
+    @media (max-width: 900px) {
+      .admin { grid-template-columns: 1fr; }
+    }
+    .aside {
+      background: var(--ink);
+      color: #b7c6d3;
+      padding: 1.25rem 0.9rem;
+    }
+    .aside .logo { color: #fff; margin: 0 0.35rem 1.2rem; }
+    .aside button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      padding: 0.65rem 0.75rem;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-bottom: 0.2rem;
+      font-weight: 500;
+    }
+    .aside button.on, .aside button:hover {
+      background: #1c2c39;
+      color: #fff;
+    }
+    .admin-main { padding: 1.25rem 1.5rem 2rem; }
+    .admin-main h2 {
+      margin: 0 0 0.25rem;
+      font-family: var(--serif);
+      font-size: 1.7rem;
+      font-weight: 600;
+    }
+    .admin-main .sub { margin: 0 0 1.1rem; color: var(--muted); }
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.7rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 900px) {
+      .kpi { grid-template-columns: 1fr 1fr; }
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.88rem;
+    }
+    th {
+      background: var(--paper);
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .ghost {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 0.3rem 0.6rem;
+      font: inherit;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .primary {
+      border: 0;
+      background: var(--teal);
+      color: #fff;
+      border-radius: 8px;
+      padding: 0.5rem 0.9rem;
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.84rem;
+      cursor: pointer;
+    }
+    .split {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      .split { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem;
+    }
+    .panel h3 {
+      margin: 0 0 0.55rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+    .type-sample {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .type-sample div {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.85rem;
+    }
+    .type-sample .t1 { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; }
+    .type-sample .t2 { font-size: 0.9rem; font-weight: 600; }
+    .type-sample .t3 { font-family: var(--mono); font-size: 0.95rem; font-weight: 600; }
+    .type-sample small { display: block; color: var(--muted); margin-top: 0.35rem; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <section class="review">
+    <h1>VNS layout review v2 — designed by persona</h1>
+    <p>
+      This is a clickable design only (not the live app). Pick a persona to see <em>why</em> the layout looks this way,
+      then switch screens: Trader desk · Learn · Admin / business.
+    </p>
+    <div class="persona-tabs" id="persona-tabs">
+      <button type="button" data-persona="trader" class="on">Trader</button>
+      <button type="button" data-persona="casual">Normal user</button>
+      <button type="button" data-persona="analyst">Analytics user</button>
+      <button type="button" data-persona="business">Businessman</button>
+      <button type="button" data-persona="admin">Admin</button>
+      <button type="button" data-persona="po">Product owner</button>
+    </div>
+    <div class="persona-note" id="persona-note"></div>
+    <div class="screen-tabs" style="margin-top:0.75rem">
+      <button type="button" data-screen="today" class="on">1 · Trader desk</button>
+      <button type="button" data-screen="learn">2 · Learn</button>
+      <button type="button" data-screen="admin">3 · Admin / business</button>
+      <button type="button" data-screen="type">4 · Type system</button>
+    </div>
+  </section>
+
+  <!-- TODAY / TRADER DESK -->
+  <div class="screen on" id="screen-today">
+    <header class="appbar">
+      <div class="logo">VNS <em>Analytics</em></div>
+      <nav class="app-nav">
+        <button type="button" class="on">Today</button>
+        <button type="button">Watch</button>
+        <button type="button" id="goto-learn">Learn</button>
+      </nav>
+      <div class="who">
+        <span class="pill">Pro</span>
+        <span>rajesh@mail.com</span>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="brief">
+        <div class="brief-main">
+          <div class="eyebrow">Daily market brief · 23 Sep 2026</div>
+          <h2>Mandi is louder today — 5 reversal setups worth a look.</h2>
+          <p>Sideways names are hidden. Start with double bottoms if you want early buys; use Mandi list if you want to stay short-biased.</p>
+        </div>
+        <div class="mood">
+          <div class="mood-card teji"><div class="k">Teji</div><div class="v">8</div><div class="s">Bullish / breakout</div></div>
+          <div class="mood-card mandi"><div class="k">Mandi</div><div class="v">12</div><div class="s">Bearish / breakdown</div></div>
+          <div class="mood-card rev"><div class="k">Reversal</div><div class="v">5</div><div class="s">DT + DB</div></div>
+        </div>
+      </section>
+
+      <section class="desk">
+        <aside class="rail">
+          <div class="rail-h">
+            <h3>Setups</h3>
+            <span>Pick one</span>
+          </div>
+          <div class="filters" id="filters">
+            <button type="button" data-f="all" class="on">All</button>
+            <button type="button" data-f="buy">Buy zones</button>
+            <button type="button" data-f="sell">Sell zones</button>
+            <button type="button" data-f="teji">Teji</button>
+            <button type="button" data-f="mandi">Mandi</button>
+          </div>
+          <div class="cards" id="cards"></div>
+        </aside>
+
+        <section class="stage">
+          <div class="stage-h">
+            <h3>Focus</h3>
+            <span>Chart confirms the story</span>
+          </div>
+          <div class="stage-body">
+            <div class="title-row">
+              <div>
+                <h2 id="sym">RELIANCE</h2>
+                <div class="meta" id="name">Reliance Industries · Daily</div>
+              </div>
+            </div>
+
+            <div class="decision">
+              <div class="dbox primary">
+                <div class="lab">Next move</div>
+                <div class="val" id="next">Buy zone · Double bottom</div>
+              </div>
+              <div class="dbox">
+                <div class="lab">BU · Teji</div>
+                <div class="num" id="bu">1,482.00</div>
+              </div>
+              <div class="dbox">
+                <div class="lab">BE · Mandi</div>
+                <div class="num" id="be">1,401.00</div>
+              </div>
+              <div class="dbox">
+                <div class="lab">Stop hint</div>
+                <div class="num" id="stop">1,392.00</div>
+              </div>
+            </div>
+
+            <div id="chart"></div>
+            <div class="explain" id="explain"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- LEARN -->
+  <div class="screen" id="screen-learn">
+    <header class="appbar">
+      <div class="logo">VNS <em>Analytics</em></div>
+      <nav class="app-nav">
+        <button type="button" id="learn-to-today">Today</button>
+        <button type="button">Watch</button>
+        <button type="button" class="on">Learn</button>
+      </nav>
+      <div class="who"><span class="pill">Trial</span></div>
+    </header>
+    <main class="wrap">
+      <div class="eyebrow" style="color:var(--muted)">For first-time & casual users</div>
+      <h2 style="font-family:var(--serif);font-size:2rem;margin:0.2rem 0 0.4rem;font-weight:600">Read the market in five marks</h2>
+      <p style="color:var(--muted);max-width:54ch;margin:0 0 1.2rem">No jargon dump. Each card is one idea you will see on Today.</p>
+      <div class="learn-grid">
+        <div class="learn-card"><div class="code">BU · Teji</div><h3>Bullish high</h3><p>Buyers proved strength. That high becomes a reference for later breakouts.</p></div>
+        <div class="learn-card"><div class="code">BE · Mandi</div><h3>Bearish low</h3><p>Sellers proved control. That low becomes a reference for later breakdowns.</p></div>
+        <div class="learn-card"><div class="code">R</div><h3>Reaction</h3><p>A pullback, not a final call. Wait — don’t force a trade on R alone.</p></div>
+        <div class="learn-card"><div class="code">DT · Atak</div><h3>Double top</h3><p>Second failure near a high. Teji looks tired — early sell / exit zone.</p></div>
+        <div class="learn-card"><div class="code">DB · Atak</div><h3>Double bottom</h3><p>Second hold near a low. Mandi looks tired — early buy zone.</p></div>
+        <div class="learn-card"><div class="code">Sideways</div><h3>Why we hide it</h3><p>Chop between levels. Forced trades hurt. Toggle it on only if you want noise.</p></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="screen" id="screen-admin">
+    <div class="admin">
+      <aside class="aside">
+        <div class="logo">VNS</div>
+        <button type="button" class="on">Business pulse</button>
+        <button type="button">Members</button>
+        <button type="button">Data health</button>
+        <button type="button" id="admin-to-today">Open trader desk</button>
+      </aside>
+      <main class="admin-main">
+        <h2>Business pulse</h2>
+        <p class="sub">For admin + product owner + businessman — health of the SaaS, not charts.</p>
+        <div class="kpi">
+          <div class="mood-card"><div class="k">Paying</div><div class="v" style="color:var(--teal)">86</div><div class="s">Active paid seats</div></div>
+          <div class="mood-card"><div class="k">Trials</div><div class="v" style="color:var(--gold)">42</div><div class="s">Convert this week</div></div>
+          <div class="mood-card"><div class="k">DAU</div><div class="v">119</div><div class="s">Opened Today board</div></div>
+          <div class="mood-card"><div class="k">Sync</div><div class="v" style="color:var(--teal)">OK</div><div class="s">Upstox · 0 errors</div></div>
+        </div>
+        <div class="split">
+          <table>
+            <thead>
+              <tr><th>Member</th><th>Plan</th><th>Expires</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr><td>trader1@mail.com</td><td>Pro</td><td>12 Oct</td><td><button class="ghost" type="button">Extend</button></td></tr>
+              <tr><td>owner@biz.com</td><td>Premium</td><td>—</td><td><button class="ghost" type="button">Edit</button></td></tr>
+              <tr><td>new@trial.com</td><td>Trial</td><td>28 Sep</td><td><button class="ghost" type="button">Upgrade</button></td></tr>
+            </tbody>
+          </table>
+          <div class="panel">
+            <h3>Data health</h3>
+            <p style="margin:0 0 0.75rem;color:var(--muted);font-size:0.88rem;line-height:1.45">
+              Last sync 20:48 · Nifty 50 · 15m→Monthly. Keep this green before market open.
+            </p>
+            <button class="primary" type="button">Run sync now</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- TYPE -->
+  <div class="screen" id="screen-type">
+    <main class="wrap">
+      <div class="eyebrow" style="color:var(--muted)">Typography & UI system</div>
+      <h2 style="font-family:var(--serif);font-size:2rem;margin:0.2rem 0 0.4rem;font-weight:600">One system, three voices</h2>
+      <p style="color:var(--muted);max-width:60ch;margin:0 0 0.5rem;line-height:1.5">
+        Serif for decisions and headlines (trust, market desk). Sans for navigation and body (clear SaaS). Mono for prices (scan accuracy).
+        Colour is restrained: teal = constructive / Teji, coral = caution / Mandi, gold = reversal attention. Ink brief for the daily story.
+      </p>
+      <div class="type-sample">
+        <div>
+          <div class="t1">Buy zone · Double bottom</div>
+          <small>Source Serif 4 — decisions & briefs</small>
+        </div>
+        <div>
+          <div class="t2">Today · Watch · Learn</div>
+          <small>IBM Plex Sans — UI chrome</small>
+        </div>
+        <div>
+          <div class="t3">1,482.00</div>
+          <small>IBM Plex Mono — prices & counts</small>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const PERSONAS = {
+      trader: {
+        text: "<strong>Trader:</strong> Needs a fast answer — <em>what’s the next possible move?</em> Layout puts a daily brief + bias counts first, then a setup list with plain action verbs, and a large focus chart with stop/levels under the eyes. Sideways is hidden so the desk stays tradable."
+      },
+      casual: {
+        text: "<strong>Normal user:</strong> Afraid of jargon. Learn screen teaches five marks in plain English/Hindi cues. On Today, cards say “Buy zone” / “Sell zone” before codes like DB/DT. Progressive: Learn → Today, not a dense terminal."
+      },
+      analyst: {
+        text: "<strong>Analytics user:</strong> Wants confirmation. Focus stage is chart-forward with BU/BE/stop as monospace numbers. Watch (later) will deepen TFs; Today stays the daily scan so analysis starts from a clean shortlist."
+      },
+      business: {
+        text: "<strong>Businessman:</strong> Cares about signal quality, not every tick. The ink brief is an executive summary of the day. Mood tiles answer “is the tape Teji or Mandi?” in three seconds before any chart."
+      },
+      admin: {
+        text: "<strong>Admin:</strong> Separate shell — no trading chrome. Members, plans, sync health. One job: keep product running and seats managed."
+      },
+      po: {
+        text: "<strong>Product owner:</strong> Business pulse shows trials, paying seats, DAU on Today. Layout separates growth metrics from trader UX so we don’t confuse conversion work with chart reading."
+      }
+    };
+
+    const SETUPS = [
+      { id: "RELIANCE", name: "Reliance Industries", f: "buy", bias: "buy", action: "Buy zone · Double bottom", why: "Mandi tired near support — early long watch", bu: "1,482.00", be: "1,401.00", stop: "1,392.00", explain: "Price held a second time near the prior low (DB). Mandi looks exhausted. Prefer strength confirmation; invalidate below the stop hint." },
+      { id: "TCS", name: "Tata Consultancy", f: "teji", bias: "buy", action: "Teji · Breakout watch", why: "Holding above last BU — strength", bu: "4,210.00", be: "3,980.00", stop: "4,150.00", explain: "Structure remains bullish with higher references (BU). Pullbacks can be R; the clean buy cue is acceptance above BU." },
+      { id: "INFY", name: "Infosys", f: "mandi", bias: "sell", action: "Mandi · Breakdown watch", why: "Trading below BE — sellers lead", bu: "1,620.00", be: "1,545.00", stop: "1,560.00", explain: "Bearish structure with lower lows (BE). Avoid catching knives until a DB forms or price reclaims BE with intent." },
+      { id: "HDFCBANK", name: "HDFC Bank", f: "sell", bias: "sell", action: "Sell zone · Double top", why: "Teji stalled near resistance", bu: "1,720.00", be: "1,640.00", stop: "1,735.00", explain: "Second failure near the high (DT). Early reduce/short zone; stop sits just above the double-top area." },
+      { id: "SBIN", name: "State Bank of India", f: "teji", bias: "wait", action: "Teji · Pullback (R)", why: "Reaction only — wait for cue", bu: "820.00", be: "760.00", stop: "790.00", explain: "Uptrend is reacting. R alone is not a trigger — wait for BU reclaim or a failed breakdown that clarifies direction." },
+      { id: "ITC", name: "ITC", f: "buy", bias: "buy", action: "Buy zone · Double bottom", why: "Atak near lows — possible turn", bu: "475.00", be: "448.00", stop: "442.00", explain: "Second hold of lows (DB). Possible turn higher if buyers show up; below stop hint cancels the idea." }
+    ];
+
+    let filter = "all";
+    let selected = "RELIANCE";
+    let chart, series;
+
+    function setPersona(key) {
+      document.querySelectorAll("#persona-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.persona === key));
+      document.getElementById("persona-note").innerHTML = PERSONAS[key].text;
+      if (key === "admin" || key === "po") showScreen("admin");
+      if (key === "casual") showScreen("learn");
+      if (key === "trader" || key === "analyst" || key === "business") showScreen("today");
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === "screen-" + id));
+      document.querySelectorAll(".screen-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.screen === id));
+      if (id === "today") requestAnimationFrame(() => { ensureChart(); renderFocus(); });
+    }
+
+    function ensureChart() {
+      const el = document.getElementById("chart");
+      if (!el || chart) {
+        if (chart) chart.applyOptions({ width: el.clientWidth });
+        return;
+      }
+      chart = LightweightCharts.createChart(el, {
+        layout: { background: { color: "#fbfcfd" }, textColor: "#0e1a24" },
+        grid: { vertLines: { color: "rgba(14,26,36,0.05)" }, horzLines: { color: "rgba(14,26,36,0.05)" } },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false },
+        height: 340,
+        width: el.clientWidth
+      });
+      series = chart.addCandlestickSeries({
+        upColor: "#0a6b5a", downColor: "#c23b2e", borderVisible: false,
+        wickUpColor: "#0a6b5a", wickDownColor: "#c23b2e"
+      });
+      window.addEventListener("resize", () => chart && chart.applyOptions({ width: el.clientWidth }));
+    }
+
+    function seed(bias) {
+      const out = [];
+      let t = Math.floor(Date.UTC(2026, 7, 1) / 1000);
+      let price = bias === "buy" ? 110 : bias === "sell" ? 140 : 125;
+      for (let i = 0; i < 64; i++) {
+        const drift = bias === "buy" ? 0.28 : bias === "sell" ? -0.28 : Math.sin(i / 6) * 0.2;
+        const open = price;
+        const close = price + drift + (Math.random() - 0.5) * 2;
+        out.push({ time: t, open, high: Math.max(open, close) + Math.random() * 1.6, low: Math.min(open, close) - Math.random() * 1.6, close });
+        price = close; t += 86400;
+      }
+      return out;
+    }
+
+    function renderCards() {
+      const root = document.getElementById("cards");
+      const rows = SETUPS.filter((s) => filter === "all" || s.f === filter || (filter === "buy" && s.bias === "buy") || (filter === "sell" && s.bias === "sell"));
+      root.innerHTML = rows.map((s) => `
+        <button class="setup ${s.id === selected ? "on" : ""}" data-id="${s.id}" type="button">
+          <div class="top">
+            <span class="sym">${s.id}</span>
+            <span class="bias ${s.bias}">${s.bias}</span>
+          </div>
+          <div class="action">${s.action}</div>
+          <div class="why">${s.why}</div>
+        </button>
+      `).join("");
+      root.querySelectorAll(".setup").forEach((btn) => btn.addEventListener("click", () => {
+        selected = btn.dataset.id;
+        renderCards();
+        renderFocus();
+      }));
+    }
+
+    function renderFocus() {
+      const s = SETUPS.find((x) => x.id === selected) || SETUPS[0];
+      document.getElementById("sym").textContent = s.id;
+      document.getElementById("name").textContent = s.name + " · Daily";
+      document.getElementById("next").textContent = s.action;
+      document.getElementById("bu").textContent = s.bu;
+      document.getElementById("be").textContent = s.be;
+      document.getElementById("stop").textContent = s.stop;
+      document.getElementById("explain").textContent = s.explain;
+      ensureChart();
+      series.setData(seed(s.bias === "wait" ? "flat" : s.bias));
+      chart.timeScale().fitContent();
+    }
+
+    document.getElementById("persona-tabs").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-persona]");
+      if (b) setPersona(b.dataset.persona);
+    });
+    document.querySelector(".screen-tabs").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-screen]");
+      if (b) showScreen(b.dataset.screen);
+    });
+    document.getElementById("filters").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-f]");
+      if (!b) return;
+      filter = b.dataset.f;
+      document.querySelectorAll("#filters button").forEach((x) => x.classList.toggle("on", x === b));
+      renderCards();
+    });
+    document.getElementById("goto-learn").addEventListener("click", () => showScreen("learn"));
+    document.getElementById("learn-to-today").addEventListener("click", () => showScreen("today"));
+    document.getElementById("admin-to-today").addEventListener("click", () => showScreen("today"));
+
+    setPersona("trader");
+    renderCards();
+    renderFocus();
+  </script>
+</body>
+</html>

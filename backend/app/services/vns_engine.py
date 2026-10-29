@@ -82,49 +82,194 @@ def within_tolerance(
     return abs_ok or pct_ok
 
 
-def _classify_high(
+def _near_any(
     price: float,
-    prev_bu: Optional[float],
+    refs: list[Optional[float]],
     *,
     tick_size: float,
     tolerance_abs: float,
     tolerance_pct: float,
-    after_be: bool,
+) -> bool:
+    return any(
+        ref is not None
+        and within_tolerance(
+            ref,
+            price,
+            tick_size=tick_size,
+            tolerance_abs=tolerance_abs,
+            tolerance_pct=tolerance_pct,
+        )
+        for ref in refs
+    )
+
+
+def _bar_date(bar: Bar) -> date:
+    return bar.ts.date() if isinstance(bar.ts, datetime) else bar.ts
+
+
+def _swing_extremes(
+    bars: list[Bar],
+    *,
+    side: str,
+    lookback: int = 20,
+) -> list[tuple[date, float]]:
+    """Local swing highs/lows in the recent window (inclusive of window edge)."""
+    if len(bars) < 3:
+        return []
+    window = bars[-lookback:] if len(bars) >= lookback else bars
+    out: list[tuple[date, float]] = []
+    for i in range(1, len(window) - 1):
+        prev_b, cur, nxt = window[i - 1], window[i], window[i + 1]
+        if side == "low":
+            if cur.low <= prev_b.low and cur.low <= nxt.low:
+                out.append((_bar_date(cur), cur.low))
+        else:
+            if cur.high >= prev_b.high and cur.high >= nxt.high:
+                out.append((_bar_date(cur), cur.high))
+    # Always consider the absolute extreme in-window as a candidate anchor
+    if side == "low":
+        m = min(window, key=lambda b: b.low)
+        out.append((_bar_date(m), m.low))
+    else:
+        m = max(window, key=lambda b: b.high)
+        out.append((_bar_date(m), m.high))
+    # Dedup by date keeping the extreme
+    by_day: dict[date, float] = {}
+    for d, px in out:
+        if d not in by_day:
+            by_day[d] = px
+        elif side == "low":
+            by_day[d] = min(by_day[d], px)
+        else:
+            by_day[d] = max(by_day[d], px)
+    return sorted(by_day.items(), key=lambda x: x[0])
+
+
+def _atak_from_swings(
+    swings: list[tuple[date, float]],
+    *,
+    tick_size: float,
+    tolerance_abs: float,
+    tolerance_pct: float,
+) -> Optional[tuple[float, date]]:
+    """
+    If the 2+ most recent swings sit in the same area → Atak pocket.
+    Returns (price, date) of the latest swing in that pocket.
+    """
+    if len(swings) < 2:
+        return None
+    # Walk back from the newest swing; require at least one earlier match
+    latest_date, latest_px = swings[-1]
+    matches = [(latest_date, latest_px)]
+    for d, px in reversed(swings[:-1]):
+        if within_tolerance(
+            latest_px,
+            px,
+            tick_size=tick_size,
+            tolerance_abs=tolerance_abs,
+            tolerance_pct=tolerance_pct,
+        ):
+            matches.append((d, px))
+        if len(matches) >= 3:
+            break
+    if len(matches) < 2:
+        # Also allow newest vs previous swing even if an older outlier sits between
+        prev_date, prev_px = swings[-2]
+        if within_tolerance(
+            latest_px,
+            prev_px,
+            tick_size=tick_size,
+            tolerance_abs=tolerance_abs,
+            tolerance_pct=tolerance_pct,
+        ):
+            return latest_px, latest_date
+        return None
+    return latest_px, latest_date
+
+
+def _classify_high(
+    price: float,
+    *,
+    last_bu: Optional[float],
+    last_swing_high: Optional[float],
+    last_dt: Optional[float],
+    last_r: Optional[float],
+    tick_size: float,
+    tolerance_abs: float,
+    tolerance_pct: float,
 ) -> Label:
-    if prev_bu is None:
+    """
+    Mark a broken-bar high.
+    - Clear expansion above last BU → BU (Teji)
+    - Same area as BU / recent swing high → DT (Atak)
+    - Otherwise a lower high → R (reaction), never endless DT cascade
+    """
+    if last_bu is None and last_swing_high is None:
         return Label.BU
-    if within_tolerance(
-        prev_bu, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
+
+    # Classic Atak vs prior Teji high
+    if last_bu is not None and within_tolerance(
+        last_bu, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
     ):
         return Label.DT
-    if price > prev_bu:
+    if last_bu is not None and price > last_bu:
         return Label.BU
-    # Lower high after bearish phase is typically reaction / atak area
-    if after_be:
-        return Label.R
-    return Label.DT
+
+    # Local Atak vs most recent swing / prior DT only (not every lower high)
+    if _near_any(
+        price,
+        [last_swing_high, last_dt],
+        tick_size=tick_size,
+        tolerance_abs=tolerance_abs,
+        tolerance_pct=tolerance_pct,
+    ):
+        return Label.DT
+
+    # Clearly lower than recent swing high → reaction pullback
+    return Label.R
 
 
 def _classify_low(
     price: float,
-    prev_be: Optional[float],
     *,
+    last_be: Optional[float],
+    last_swing_low: Optional[float],
+    last_db: Optional[float],
+    last_r: Optional[float],
     tick_size: float,
     tolerance_abs: float,
     tolerance_pct: float,
-    after_bu: bool,
 ) -> Label:
-    if prev_be is None:
+    """
+    Mark a taken-out-bar low — prefer *recent* swing lows over ancient BE.
+    - Clear lower low vs recent structure → BE (Mandi)
+    - Same area as recent low / prior DB → DB (Atak)
+    - Higher low after strength → R
+    """
+    # Anchor to the most recent structural low when available
+    ref_low = last_swing_low if last_swing_low is not None else last_be
+
+    if ref_low is None:
         return Label.BE
+
     if within_tolerance(
-        prev_be, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
+        ref_low, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
     ):
         return Label.DB
-    if price < prev_be:
+
+    if price < ref_low:
         return Label.BE
-    if after_bu:
-        return Label.R
-    return Label.DB
+
+    # Higher low — Atak if it retests a known DB/R pocket, else reaction
+    if _near_any(
+        price,
+        [last_db, last_r],
+        tick_size=tick_size,
+        tolerance_abs=tolerance_abs,
+        tolerance_pct=tolerance_pct,
+    ):
+        return Label.DB
+    return Label.R
 
 
 def analyze_bars(
@@ -150,16 +295,13 @@ def analyze_bars(
     last_r: Optional[float] = None
     last_dt: Optional[float] = None
     last_db: Optional[float] = None
+    last_swing_high: Optional[float] = None
+    last_swing_low: Optional[float] = None
     last_label: Optional[Label] = None
+    last_atak_label: Optional[Label] = None  # most recent DT or DB
 
-    # Active reference bar waiting to be broken on the opposite side
-    # We use previous bar as the immediate structure reference (manual notebook style).
-    pending_high_bar: Optional[Bar] = None  # waiting for its low to break → mark high
-    pending_low_bar: Optional[Bar] = None  # waiting for its high to take out → mark low
-
-    # Start: first bar seeds both pending references
-    pending_high_bar = bars[0]
-    pending_low_bar = bars[0]
+    pending_high_bar: Optional[Bar] = bars[0]
+    pending_low_bar: Optional[Bar] = bars[0]
 
     for i in range(1, len(bars)):
         bar = bars[i]
@@ -168,87 +310,76 @@ def analyze_bars(
         # Rule A: low of pending_high_bar broken → mark that high
         if pending_high_bar is not None and bar.low < pending_high_bar.low:
             price = pending_high_bar.high
-            after_be = last_label in {Label.BE, Label.DB, Label.R} and last_be is not None
-            # If we're coming from BE, a bounce high below prior BU is often R
-            if last_be is not None and last_label in {Label.BE, Label.DB} and price < (last_bu or price):
-                # Reaction high after BE unless it expands to new BU/DT vs last_bu
-                if last_bu is not None and within_tolerance(
-                    last_bu, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
-                ):
-                    label = Label.DT
-                elif last_bu is not None and price > last_bu:
-                    label = Label.BU
-                else:
-                    label = Label.R
-            else:
-                label = _classify_high(
-                    price,
-                    last_bu,
-                    tick_size=tick_size,
-                    tolerance_abs=tolerance_abs,
-                    tolerance_pct=tolerance_pct,
-                    after_be=after_be,
-                )
-
-            mark = Mark(
-                mark_date=pending_high_bar.ts.date(),
-                column_side="BU",
-                price=price,
-                label=label,
-                note=f"low broken on {d.isoformat()}",
+            label = _classify_high(
+                price,
+                last_bu=last_bu,
+                last_swing_high=last_swing_high,
+                last_dt=last_dt,
+                last_r=last_r,
+                tick_size=tick_size,
+                tolerance_abs=tolerance_abs,
+                tolerance_pct=tolerance_pct,
             )
-            marks.append(mark)
+            marks.append(
+                Mark(
+                    mark_date=pending_high_bar.ts.date()
+                    if isinstance(pending_high_bar.ts, datetime)
+                    else pending_high_bar.ts,
+                    column_side="BU",
+                    price=price,
+                    label=label,
+                    note=f"low broken on {d.isoformat()}",
+                )
+            )
             last_label = label
+            last_swing_high = price
             if label == Label.BU:
                 last_bu = price
             elif label == Label.DT:
                 last_dt = price
+                last_atak_label = Label.DT
                 if last_bu is None:
                     last_bu = price
             elif label == Label.R:
                 last_r = price
 
-            # After marking high, wait for that high (or later) to be taken out → mark low
             pending_low_bar = pending_high_bar
             pending_high_bar = bar
 
         # Rule B: high of pending_low_bar taken out → mark that low
         if pending_low_bar is not None and bar.high > pending_low_bar.high:
             price = pending_low_bar.low
-            after_bu = last_label in {Label.BU, Label.DT, Label.R} and last_bu is not None
-            if last_bu is not None and last_label in {Label.BU, Label.DT} and price > (last_be or 0):
-                if last_be is not None and within_tolerance(
-                    last_be, price, tick_size=tick_size, tolerance_abs=tolerance_abs, tolerance_pct=tolerance_pct
-                ):
-                    label = Label.DB
-                elif last_be is not None and price < last_be:
-                    label = Label.BE
-                else:
-                    label = Label.R
-            else:
-                label = _classify_low(
-                    price,
-                    last_be,
-                    tick_size=tick_size,
-                    tolerance_abs=tolerance_abs,
-                    tolerance_pct=tolerance_pct,
-                    after_bu=after_bu,
-                )
-
-            mark = Mark(
-                mark_date=pending_low_bar.ts.date(),
-                column_side="BE",
-                price=price,
-                label=label,
-                note=f"high taken out on {d.isoformat()}",
+            label = _classify_low(
+                price,
+                last_be=last_be,
+                last_swing_low=last_swing_low,
+                last_db=last_db,
+                last_r=last_r,
+                tick_size=tick_size,
+                tolerance_abs=tolerance_abs,
+                tolerance_pct=tolerance_pct,
             )
-            marks.append(mark)
+            marks.append(
+                Mark(
+                    mark_date=pending_low_bar.ts.date()
+                    if isinstance(pending_low_bar.ts, datetime)
+                    else pending_low_bar.ts,
+                    column_side="BE",
+                    price=price,
+                    label=label,
+                    note=f"high taken out on {d.isoformat()}",
+                )
+            )
             last_label = label
+            prev_swing = last_swing_low
+            last_swing_low = price
             if label == Label.BE:
                 last_be = price
             elif label == Label.DB:
                 last_db = price
-                if last_be is None:
+                last_atak_label = Label.DB
+                # Keep Mandi reference near the Atak pocket (recent lows), not ancient BE
+                if last_be is None or (prev_swing is not None and last_be < prev_swing * 0.5):
                     last_be = price
             elif label == Label.R:
                 last_r = price
@@ -256,11 +387,92 @@ def analyze_bars(
             pending_high_bar = pending_low_bar
             pending_low_bar = bar
 
-        # Keep pending refs on the latest bar when no break yet (rolling structure)
         if pending_high_bar is None:
             pending_high_bar = bar
         if pending_low_bar is None:
             pending_low_bar = bar
+
+    # When Rule A/B pendings stall in a range, still read Atak from recent swing
+    # extremes (most recent lows/highs) — this is what discretionary VNS does.
+    swing_lows = _swing_extremes(bars, side="low", lookback=20)
+    swing_highs = _swing_extremes(bars, side="high", lookback=20)
+    recent_db = _atak_from_swings(
+        swing_lows,
+        tick_size=tick_size,
+        tolerance_abs=tolerance_abs,
+        tolerance_pct=tolerance_pct,
+    )
+    recent_dt = _atak_from_swings(
+        swing_highs,
+        tick_size=tick_size,
+        tolerance_abs=tolerance_abs,
+        tolerance_pct=tolerance_pct,
+    )
+    if recent_db is not None:
+        db_price, db_date = recent_db
+        last_db = db_price
+        if last_be is None or last_be < db_price * 0.85:
+            last_be = db_price
+        # Only append a synthetic mark if we don't already have a recent DB nearby
+        if not any(
+            m.label == Label.DB and abs(m.price - db_price) / max(db_price, 1e-9) < 0.01
+            and m.mark_date >= db_date
+            for m in marks[-12:]
+        ):
+            marks.append(
+                Mark(
+                    mark_date=db_date,
+                    column_side="BE",
+                    price=db_price,
+                    label=Label.DB,
+                    note="recent swing lows holding (Atak)",
+                )
+            )
+        last_label = Label.DB
+        last_atak_label = Label.DB
+        last_swing_low = db_price
+    if recent_dt is not None and recent_db is not None:
+        # Prefer the more recent swing Atak (lows vs highs by date)
+        _, db_date = recent_db
+        _, dt_date = recent_dt
+        if dt_date > db_date:
+            dt_price, _ = recent_dt
+            last_dt = dt_price
+            last_label = Label.DT
+            last_atak_label = Label.DT
+            if not any(
+                m.label == Label.DT and abs(m.price - dt_price) / max(dt_price, 1e-9) < 0.01
+                and m.mark_date >= dt_date
+                for m in marks[-12:]
+            ):
+                marks.append(
+                    Mark(
+                        mark_date=dt_date,
+                        column_side="BU",
+                        price=dt_price,
+                        label=Label.DT,
+                        note="recent swing highs failing (Atak)",
+                    )
+                )
+    elif recent_dt is not None and recent_db is None:
+        dt_price, dt_date = recent_dt
+        last_dt = dt_price
+        last_label = Label.DT
+        last_atak_label = Label.DT
+        if not any(
+            m.label == Label.DT and abs(m.price - dt_price) / max(dt_price, 1e-9) < 0.01
+            and m.mark_date >= dt_date
+            for m in marks[-12:]
+        ):
+            marks.append(
+                Mark(
+                    mark_date=dt_date,
+                    column_side="BU",
+                    price=dt_price,
+                    label=Label.DT,
+                    note="recent swing highs failing (Atak)",
+                )
+            )
 
     result.marks = marks
     result.last_bu = last_bu
@@ -270,12 +482,16 @@ def analyze_bars(
     result.last_db = last_db
     result.as_of = bars[-1].ts
 
-    # Trend heuristic
+    # Trend heuristic — prefer most recent Atak when deciding exhausted vs reactive
     if last_bu is not None and last_be is not None:
-        if last_label in {Label.BU, Label.DT}:
-            result.trend = "bullish" if last_label == Label.BU else "bullish_exhausted"
-        elif last_label in {Label.BE, Label.DB}:
-            result.trend = "bearish" if last_label == Label.BE else "bearish_exhausted"
+        if last_label == Label.BU:
+            result.trend = "bullish"
+        elif last_label == Label.BE:
+            result.trend = "bearish"
+        elif last_label == Label.DT or (last_atak_label == Label.DT and last_label == Label.R):
+            result.trend = "bullish_exhausted"
+        elif last_label == Label.DB or (last_atak_label == Label.DB and last_label in {Label.R, Label.DB}):
+            result.trend = "bearish_exhausted"
         else:
             result.trend = "reactive"
     elif last_bu is not None:
@@ -283,27 +499,30 @@ def analyze_bars(
     elif last_be is not None:
         result.trend = "bearish"
 
-    # Signals (Mode A breakout + Mode B DT/DB)
     last_close = bars[-1].close
     signal = Signal.NONE
     note = ""
     stop: Optional[float] = None
 
-    if last_label == Label.DT and last_dt is not None:
-        signal = Signal.DT_SHORT
-        note = f"Double top near {last_dt:.2f} (tolerance-aware)"
-        stop = max(last_dt, last_bu or last_dt)
-    elif last_label == Label.DB and last_db is not None:
+    # Mode B Atak: most recent DT/DB wins. If last mark is R after Atak, keep that Atak.
+    effective_atak = last_label if last_label in {Label.DT, Label.DB} else last_atak_label
+    if last_label == Label.R and last_atak_label is not None:
+        effective_atak = last_atak_label
+
+    if effective_atak == Label.DB and last_db is not None:
         signal = Signal.DB_LONG
-        note = f"Double bottom near {last_db:.2f} (tolerance-aware)"
+        note = f"Atak (DB) near {last_db:.2f} — recent lows holding"
         stop = min(last_db, last_be or last_db)
+    elif effective_atak == Label.DT and last_dt is not None:
+        signal = Signal.DT_SHORT
+        note = f"Atak (DT) near {last_dt:.2f} — recent highs failing"
+        stop = max(last_dt, last_bu or last_dt)
     elif last_bu is not None and last_be is not None and last_close > last_bu and last_label in {
         Label.BE,
         Label.R,
         Label.BU,
         Label.DB,
     }:
-        # Classic breakout: price crosses BU after bearish/reaction phase
         if last_be < last_bu:
             signal = Signal.BREAKOUT_LONG
             note = f"Breakout above BU {last_bu:.2f}"
@@ -314,19 +533,24 @@ def analyze_bars(
         Label.BE,
         Label.DT,
     }:
-        if last_be < last_bu:
+        if last_be < last_bu and last_be > last_close * 0.5:
             signal = Signal.BREAKDOWN_SHORT
             note = f"Breakdown below BE {last_be:.2f}"
             stop = last_bu
 
-    # Sideways: both DT and DB recently and price between band
-    if last_dt is not None and last_db is not None and last_bu is not None and last_be is not None:
-        if last_be < last_close < last_bu and last_label in {Label.DT, Label.DB, Label.R}:
-            band = last_bu - last_be
-            if band > 0 and abs(last_dt - last_bu) / band < 0.35:
-                signal = Signal.SIDEWAYS
-                note = "Range / repeated DT-DB — avoid forced trades"
-                stop = None
+    # Sideways only for tight recent bands — never override Mode B Atak
+    if signal not in {Signal.DT_SHORT, Signal.DB_LONG}:
+        if last_dt is not None and last_db is not None and last_bu is not None and last_be is not None:
+            if last_be < last_close < last_bu and last_label in {Label.DT, Label.DB, Label.R}:
+                band = last_bu - last_be
+                if (
+                    band > 0
+                    and band / max(last_close, 1e-9) <= 0.28
+                    and abs(last_dt - last_bu) / band < 0.35
+                ):
+                    signal = Signal.SIDEWAYS
+                    note = "Range / repeated DT-DB — avoid forced trades"
+                    stop = None
 
     result.signal = signal
     result.signal_note = note
